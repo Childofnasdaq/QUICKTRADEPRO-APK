@@ -1,8 +1,8 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
+import { useRouter } from "next/router"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -23,13 +23,13 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
   })
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const router = useRouter()
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
     setCredentials((prev) => ({ ...prev, [name]: value }))
   }
 
-  // Update the handleSubmit function to use Firebase auth
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
@@ -44,6 +44,9 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
 
         // Call the onAuthenticated callback with the user data
         onAuthenticated(result.user)
+
+        // Navigate to the Home screen
+        router.push("/home")
       } else {
         setError(result.error || "Authentication failed. Please check your credentials.")
       }
