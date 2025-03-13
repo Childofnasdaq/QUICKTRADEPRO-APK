@@ -4,8 +4,8 @@ import { Home, Link2, Settings, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 type BottomNavigationProps = {
-  activeScreen: string
-  onScreenChange: (screen: string) => void
+  activeScreen: "home" | "connect" | "settings"
+  onScreenChange: (screen: "home" | "connect" | "settings") => void
   onLogout: () => void
 }
 

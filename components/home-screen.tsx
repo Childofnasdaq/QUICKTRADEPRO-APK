@@ -3,21 +3,26 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { checkMetaApiConnection, toggleTrading } from "@/lib/portal-auth"
+import { checkMetaApiConnection, toggleTrading, type PortalUser } from "@/lib/portal-auth"
 import Image from "next/image"
 import { AlertCircle, CheckCircle, Play, Square } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { db, auth } from "@/lib/firebase"
 import { collection, query, where, onSnapshot, orderBy, limit } from "firebase/firestore"
 
-export function HomeScreen({ userData }) {
+type HomeScreenProps = {
+  user: PortalUser
+  credentials: any
+}
+
+export function HomeScreen({ user, credentials }: HomeScreenProps) {
   const [isConnected, setIsConnected] = useState(false)
   const [isTrading, setIsTrading] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [success, setSuccess] = useState(null)
-  const [botLogs, setBotLogs] = useState([])
-  const [avatarError, setAvatarError] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
+  const [botLogs, setBotLogs] = useState<string[]>([])
+  const [userData, setUserData] = useState<PortalUser | null>(null)
 
   // Check MetaAPI connection status periodically
   useEffect(() => {
@@ -38,7 +43,7 @@ export function HomeScreen({ userData }) {
     setIsLoading(true)
 
     try {
-      const result = await toggleTrading(!isTrading)
+      const result = await toggleTrading(credentials, !isTrading)
 
       if (result.success) {
         setIsTrading(!isTrading)
@@ -80,25 +85,24 @@ export function HomeScreen({ userData }) {
       <Card className="bg-black border border-red-500 glow-border">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
-            {userData.avatar && !avatarError ? (
+            {user.avatar ? (
               <Image
-                src={userData.avatar || "/placeholder.svg"}
+                src={user.avatar || "/placeholder.svg"}
                 alt="User Avatar"
                 width={80}
                 height={80}
                 className="rounded-full border-2 border-red-500"
-                onError={() => setAvatarError(true)}
               />
             ) : (
               <div className="w-20 h-20 rounded-full bg-red-900 flex items-center justify-center text-white text-2xl">
-                {userData.username?.charAt(0).toUpperCase() || userData.email.charAt(0).toUpperCase()}
+                {user.username?.charAt(0).toUpperCase() || user.email.charAt(0).toUpperCase()}
               </div>
             )}
           </div>
           <CardTitle className="text-xl font-bold text-red-500 neon-text">
-            Welcome, {userData.username || userData.email.split("@")[0]}
+            Welcome, {user.username || user.email.split("@")[0]}
           </CardTitle>
-          <CardDescription className="text-red-300">Robot: {userData.robotName || "Not set"}</CardDescription>
+          <CardDescription className="text-red-300">Robot: {user.robotName}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {error && (
@@ -122,9 +126,7 @@ export function HomeScreen({ userData }) {
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-red-300">Expiry Date:</span>
-              <span className="text-sm text-white">
-                {userData.licenseExpiry ? new Date(userData.licenseExpiry).toLocaleDateString() : "N/A"}
-              </span>
+              <span className="text-sm text-white">{user.licenseExpiry}</span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-red-300">Connection Status:</span>
@@ -157,9 +159,7 @@ export function HomeScreen({ userData }) {
           </div>
         </CardContent>
         <CardFooter className="flex justify-center">
-          <p className="text-xs text-red-400">
-            Allowed Symbols: {userData.allowedSymbols?.map((s) => s.symbol).join(", ") || "None"}
-          </p>
+          <p className="text-xs text-red-400">Allowed Symbols: {user.allowedSymbols.map((s) => s.symbol).join(", ")}</p>
         </CardFooter>
       </Card>
     </div>

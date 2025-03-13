@@ -3,49 +3,39 @@
 import { useState, useEffect } from "react"
 import { AuthScreen } from "@/components/auth-screen"
 import { MainApp } from "@/components/main-app"
-import { LoadingScreen } from "@/components/loading-screen"
+import type { PortalUser } from "@/lib/portal-auth"
 import { auth } from "@/lib/firebase"
 import { onAuthStateChanged } from "firebase/auth"
-import { getUserData } from "@/lib/portal-auth"
 
 export default function Home() {
-  const [userData, setUserData] = useState(null)
+  const [user, setUser] = useState<PortalUser | null>(null)
+  const [credentials, setCredentials] = useState<any>(null)
+  const [activeScreen, setActiveScreen] = useState<"home" | "connect" | "settings">("home")
   const [isLoading, setIsLoading] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [userData, setUserData] = useState<PortalUser | null>(null)
 
   // Check for existing authentication
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    // Check for existing authentication
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         // User is signed in
-        try {
-          // Get user data from localStorage first for immediate display
-          const storedUser = localStorage.getItem("portal_user")
-          if (storedUser) {
-            const parsedUserData = JSON.parse(storedUser)
-            setUserData(parsedUserData)
+        const storedUser = localStorage.getItem("portal_user")
+        if (storedUser) {
+          try {
+            const userData = JSON.parse(storedUser)
+            setUserData(userData)
             setIsAuthenticated(true)
-          }
-
-          // Then fetch fresh data from the portal
-          const freshUserData = await getUserData(user.uid)
-          if (freshUserData) {
-            setUserData(freshUserData)
-            // Update localStorage with fresh data
-            localStorage.setItem("portal_user", JSON.stringify(freshUserData))
-          }
-        } catch (error) {
-          console.error("Error fetching user data:", error)
-          // If we can't get fresh data but have stored data, continue with stored data
-          if (!userData) {
-            setIsAuthenticated(false)
+          } catch (error) {
+            console.error("Error parsing stored user data:", error)
+            localStorage.removeItem("portal_user")
           }
         }
       } else {
         // User is signed out
         setIsAuthenticated(false)
         setUserData(null)
-        localStorage.removeItem("portal_user")
       }
       setIsLoading(false)
     })
@@ -54,11 +44,11 @@ export default function Home() {
     return () => unsubscribe()
   }, [])
 
-  const handleAuthenticated = (authenticatedUser) => {
-    setUserData(authenticatedUser)
-    setIsAuthenticated(true)
+  const handleAuthenticated = (authenticatedUser: PortalUser) => {
+    setUser(authenticatedUser)
+
     // Save user data to localStorage
-    localStorage.setItem("portal_user", JSON.stringify(authenticatedUser))
+    localStorage.setItem("portalUser", JSON.stringify(authenticatedUser))
   }
 
   const handleLogout = () => {
@@ -71,13 +61,13 @@ export default function Home() {
   }
 
   if (isLoading) {
-    return <LoadingScreen />
+    return <div className="flex items-center justify-center min-h-screen bg-black">Loading...</div>
   }
 
   if (!isAuthenticated) {
     return <AuthScreen onAuthenticated={handleAuthenticated} />
   }
 
-  return <MainApp userData={userData} onLogout={handleLogout} />
+  return <MainApp handleLogout={handleLogout} />
 }
 

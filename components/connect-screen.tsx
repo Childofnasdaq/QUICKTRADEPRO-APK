@@ -3,15 +3,15 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { checkMetaApiConnection, getBotLogs } from "@/lib/portal-auth"
+import { getBotLogs, checkMetaApiConnection, type PortalUser } from "@/lib/portal-auth"
 import { RefreshCw } from "lucide-react"
-import { auth } from "@/lib/firebase"
 
 type ConnectScreenProps = {
-  user: any
+  user: PortalUser
+  credentials: any
 }
 
-export function ConnectScreen({ user }: ConnectScreenProps) {
+export function ConnectScreen({ user, credentials }: ConnectScreenProps) {
   const [isConnected, setIsConnected] = useState(false)
   const [logs, setLogs] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -35,15 +35,12 @@ export function ConnectScreen({ user }: ConnectScreenProps) {
   }, [])
 
   const fetchLogs = async () => {
-    if (!auth.currentUser) return
-
     setIsLoading(true)
     try {
-      const botLogs = await getBotLogs(auth.currentUser.uid)
+      const botLogs = await getBotLogs(credentials)
       setLogs(botLogs)
     } catch (err) {
       console.error("Error fetching logs:", err)
-      setLogs(["Error fetching logs. Please try again."])
     } finally {
       setIsLoading(false)
     }

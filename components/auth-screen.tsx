@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { validatePortalCredentials, type PortalCredentials, type PortalUser } from "@/lib/portal-auth"
 import Image from "next/image"
-import { AlertCircle, Loader2 } from "lucide-react"
+import { AlertCircle } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
 type AuthScreenProps = {
@@ -29,6 +29,7 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
     setCredentials((prev) => ({ ...prev, [name]: value }))
   }
 
+  // Update the handleSubmit function to use Firebase auth
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
@@ -38,6 +39,9 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
       const result = await validatePortalCredentials(credentials)
 
       if (result.success && result.user) {
+        // Store credentials in localStorage for persistence
+        localStorage.setItem("portalCredentials", JSON.stringify(credentials))
+
         // Call the onAuthenticated callback with the user data
         onAuthenticated(result.user)
       } else {
@@ -124,14 +128,7 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
             </div>
 
             <Button type="submit" className="w-full bg-red-500 hover:bg-red-600 text-white" disabled={isLoading}>
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Authenticating...
-                </>
-              ) : (
-                "Login"
-              )}
+              {isLoading ? "Authenticating..." : "Login"}
             </Button>
           </form>
         </CardContent>

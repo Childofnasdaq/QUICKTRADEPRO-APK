@@ -7,17 +7,16 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { type PortalUser, type AllowedSymbol, saveUserSettings } from "@/lib/portal-auth"
-import { AlertCircle, CheckCircle, Plus, Trash2, LogOut } from "lucide-react"
+import { AlertCircle, CheckCircle, Plus, Trash2 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { auth } from "@/lib/firebase"
 
 type SettingsScreenProps = {
   user: PortalUser
-  credentials?: any
-  onLogout: () => void
+  credentials: any
 }
 
-export function SettingsScreen({ user, credentials, onLogout }: SettingsScreenProps) {
+export function SettingsScreen({ user, credentials }: SettingsScreenProps) {
   const [symbols, setSymbols] = useState<AllowedSymbol[]>(user.allowedSymbols || [])
   const [newSymbol, setNewSymbol] = useState<AllowedSymbol>({
     symbol: "",
@@ -65,8 +64,7 @@ export function SettingsScreen({ user, credentials, onLogout }: SettingsScreenPr
     setIsLoading(true)
 
     if (!auth.currentUser) {
-      setError("You must be logged in to save settings")
-      setIsLoading(false)
+      alert("You must be logged in to save settings")
       return
     }
 
@@ -77,14 +75,6 @@ export function SettingsScreen({ user, credentials, onLogout }: SettingsScreenPr
 
       if (result) {
         setSuccess("Settings saved successfully!")
-
-        // Update localStorage with new settings
-        const storedUser = localStorage.getItem("portal_user")
-        if (storedUser) {
-          const userData = JSON.parse(storedUser)
-          userData.allowedSymbols = symbols
-          localStorage.setItem("portal_user", JSON.stringify(userData))
-        }
       } else {
         setError("Failed to save settings. Please try again.")
       }
@@ -217,13 +207,6 @@ export function SettingsScreen({ user, credentials, onLogout }: SettingsScreenPr
                 disabled={isLoading}
               >
                 {isLoading ? "Saving..." : "Save Settings"}
-              </Button>
-            </div>
-
-            <div className="pt-4 border-t border-red-900/30 mt-4">
-              <Button className="w-full bg-red-900 hover:bg-red-800 text-white" onClick={onLogout}>
-                <LogOut className="mr-2 h-4 w-4" />
-                Logout
               </Button>
             </div>
           </div>
