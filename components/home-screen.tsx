@@ -22,7 +22,6 @@ export function HomeScreen({ user, credentials }: HomeScreenProps) {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [botLogs, setBotLogs] = useState<string[]>([])
-  const [userData, setUserData] = useState<PortalUser | null>(null)
 
   // Check MetaAPI connection status periodically
   useEffect(() => {
@@ -60,7 +59,7 @@ export function HomeScreen({ user, credentials }: HomeScreenProps) {
   }
 
   useEffect(() => {
-    if (!userData || !auth.currentUser) return
+    if (!user || !auth.currentUser) return
 
     // Set up real-time listener for bot logs
     const logsRef = collection(db, "botLogs")
@@ -78,7 +77,7 @@ export function HomeScreen({ user, credentials }: HomeScreenProps) {
     )
 
     return () => unsubscribe()
-  }, [userData])
+  }, [user])
 
   return (
     <div className="p-4 max-w-md mx-auto">
@@ -165,4 +164,3 @@ export function HomeScreen({ user, credentials }: HomeScreenProps) {
     </div>
   )
 }
-
