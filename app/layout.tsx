@@ -1,14 +1,10 @@
 import type React from "react"
-import { Inter } from "next/font/google"
+import type { Metadata } from "next"
 import "./globals.css"
-import { ThemeProvider } from "@/components/theme-provider"
 
-const inter = Inter({ subsets: ["latin"] })
-
-export const metadata = {
-  title: "QUICKTRADE PRO",
-  description: "Professional Trading Platform",
-  manifest: "/manifest.json",
+export const metadata: Metadata = {
+  title: "v0 App",
+  description: "Created with v0",
   generator: "v0.dev",
 }
 
@@ -19,14 +15,30 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={inter.className}>
-        <ThemeProvider attribute="class" defaultTheme="light">
-          <main className="min-h-screen bg-background">{children}</main>
-        </ThemeProvider>
-      </body>
+      <body>{children}</body>
     </html>
   )
 }
+
+import "./globals.css"
+
+import "./globals.css"
+
+import "./globals.css"
+
+import "./globals.css"
+
+import "./globals.css"
+
+import "./globals.css"
+
+import "./globals.css"
+
+import "./globals.css"
+
+import "./globals.css"
+
+import "./globals.css"
 
 import "./globals.css"
 
