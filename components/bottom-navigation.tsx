@@ -1,48 +1,42 @@
 "use client"
 
-import { Home, Link2, Settings, LogOut } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { Home, Link2, Settings } from "lucide-react"
 
-type BottomNavigationProps = {
-  activeScreen: "home" | "connect" | "settings"
-  onScreenChange: (screen: "home" | "connect" | "settings") => void
-  onLogout: () => void
+interface BottomNavigationProps {
+  activeTab: string
+  onChange: (tab: string) => void
 }
 
-export function BottomNavigation({ activeScreen, onScreenChange, onLogout }: BottomNavigationProps) {
+export function BottomNavigation({ activeTab, onChange }: BottomNavigationProps) {
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-black border-t border-red-900 p-2 flex justify-around">
-      <Button
-        variant="ghost"
-        className={`flex flex-col items-center ${activeScreen === "home" ? "text-red-500" : "text-gray-400"}`}
-        onClick={() => onScreenChange("home")}
+    <div className="fixed bottom-0 left-0 right-0 h-16 bg-black border-t border-red-900 flex items-center justify-around max-w-md mx-auto">
+      <button
+        className={`flex flex-col items-center justify-center w-1/3 h-full ${
+          activeTab === "home" ? "text-red-500" : "text-gray-500"
+        }`}
+        onClick={() => onChange("home")}
       >
-        <Home className="h-5 w-5" />
+        <Home size={20} />
         <span className="text-xs mt-1">Home</span>
-      </Button>
-
-      <Button
-        variant="ghost"
-        className={`flex flex-col items-center ${activeScreen === "connect" ? "text-red-500" : "text-gray-400"}`}
-        onClick={() => onScreenChange("connect")}
+      </button>
+      <button
+        className={`flex flex-col items-center justify-center w-1/3 h-full ${
+          activeTab === "connect" ? "text-red-500" : "text-gray-500"
+        }`}
+        onClick={() => onChange("connect")}
       >
-        <Link2 className="h-5 w-5" />
-        <span className="text-xs mt-1">Bot Logs</span>
-      </Button>
-
-      <Button
-        variant="ghost"
-        className={`flex flex-col items-center ${activeScreen === "settings" ? "text-red-500" : "text-gray-400"}`}
-        onClick={() => onScreenChange("settings")}
+        <Link2 size={20} />
+        <span className="text-xs mt-1">Connect</span>
+      </button>
+      <button
+        className={`flex flex-col items-center justify-center w-1/3 h-full ${
+          activeTab === "settings" ? "text-red-500" : "text-gray-500"
+        }`}
+        onClick={() => onChange("settings")}
       >
-        <Settings className="h-5 w-5" />
+        <Settings size={20} />
         <span className="text-xs mt-1">Settings</span>
-      </Button>
-
-      <Button variant="ghost" className="flex flex-col items-center text-gray-400" onClick={onLogout}>
-        <LogOut className="h-5 w-5" />
-        <span className="text-xs mt-1">Logout</span>
-      </Button>
+      </button>
     </div>
   )
 }

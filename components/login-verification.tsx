@@ -1,41 +1,32 @@
 "use client"
 
 import type React from "react"
+
 import { useState } from "react"
-import { validatePortalCredentials } from "@/lib/firebase-auth"
-import type { FirebaseUser } from "@/lib/firebase-auth"
+import { handleLogin } from "@/lib/user-verification"
 
-interface AuthScreenProps {
-  onAuthSuccess: (userData: FirebaseUser) => void
-}
-
-export function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
-  const [credentials, setCredentials] = useState({
-    mentorId: "",
-    email: "",
-    licenseKey: "",
-  })
+export function LoginVerification() {
+  const [email, setEmail] = useState("")
+  const [mentorID, setMentorID] = useState("")
+  const [licenseKey, setLicenseKey] = useState("")
+  const [userProfile, setUserProfile] = useState("")
   const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState("")
+
+  // Simple navigation function for demo purposes
+  const navigate = (path: string) => {
+    console.log(`Navigating to: ${path}`)
+    // In a real app, you would use router.push(path) or similar
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError("")
     setIsLoading(true)
 
     try {
-      const result = await validatePortalCredentials(credentials)
-
-      if (result.success && result.user) {
-        // Store the user data
-        localStorage.setItem("firebase_user", JSON.stringify(result.user))
-        onAuthSuccess(result.user)
-      } else {
-        setError(result.error || "Authentication failed")
-      }
-    } catch (error: any) {
-      console.error("Authentication error:", error)
-      setError(error.message || "Failed to connect to portal. Please try again.")
+      await handleLogin(email, mentorID, licenseKey, setUserProfile, navigate)
+    } catch (error) {
+      console.error("Login error:", error)
+      alert("An error occurred during login. Please try again.")
     } finally {
       setIsLoading(false)
     }
@@ -49,22 +40,32 @@ export function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
           <p className="text-red-400 mt-2">Enter your portal credentials to continue</p>
         </div>
 
+        {userProfile && (
+          <div className="flex justify-center">
+            <img
+              src={userProfile || "/placeholder.svg"}
+              alt="Profile Picture"
+              className="w-24 h-24 rounded-full object-cover border-2 border-red-500"
+            />
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-4">
             <input
-              type="text"
-              placeholder="Mentor ID"
-              value={credentials.mentorId}
-              onChange={(e) => setCredentials((prev) => ({ ...prev, mentorId: e.target.value }))}
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               className="w-full bg-transparent border border-red-500/30 rounded-md p-3 text-white placeholder:text-red-300/50 focus:outline-none focus:border-red-500"
               required
             />
 
             <input
-              type="email"
-              placeholder="Email"
-              value={credentials.email}
-              onChange={(e) => setCredentials((prev) => ({ ...prev, email: e.target.value }))}
+              type="text"
+              placeholder="Mentor ID"
+              value={mentorID}
+              onChange={(e) => setMentorID(e.target.value)}
               className="w-full bg-transparent border border-red-500/30 rounded-md p-3 text-white placeholder:text-red-300/50 focus:outline-none focus:border-red-500"
               required
             />
@@ -72,25 +73,25 @@ export function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
             <input
               type="text"
               placeholder="License Key"
-              value={credentials.licenseKey}
-              onChange={(e) => setCredentials((prev) => ({ ...prev, licenseKey: e.target.value }))}
+              value={licenseKey}
+              onChange={(e) => setLicenseKey(e.target.value)}
               className="w-full bg-transparent border border-red-500/30 rounded-md p-3 text-white placeholder:text-red-300/50 focus:outline-none focus:border-red-500"
               required
             />
           </div>
-
-          {error && <div className="text-red-500 text-sm text-center">{error}</div>}
 
           <button
             type="submit"
             className="w-full bg-red-500 hover:bg-red-600 text-white font-medium py-3 px-4 rounded-md transition-colors"
             disabled={isLoading}
           >
-            {isLoading ? "Authenticating..." : "Authenticate"}
+            {isLoading ? "Verifying..." : "Login"}
           </button>
         </form>
 
-        <div className="text-center text-red-400 text-sm">Need help? Contact support at support@quicktradepro.com</div>
+        <div className="text-center text-red-400 text-sm">
+          Need help? Contact support at support@childofnasdaqofficial.co.za
+        </div>
       </div>
     </div>
   )

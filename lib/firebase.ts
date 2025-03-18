@@ -1,9 +1,10 @@
 import { initializeApp } from "firebase/app"
 import { getAuth } from "firebase/auth"
 import { getFirestore } from "firebase/firestore"
-import { getAnalytics, isSupported } from "firebase/analytics"
+import { getStorage } from "firebase/storage"
+import { getAnalytics } from "firebase/analytics"
 
-// Your web app's Firebase configuration
+// Your Firebase configuration with the provided values
 const firebaseConfig = {
   apiKey: "AIzaSyDE54BfEl0Qx7jqDnXeFPwy0nrDabAmi7U",
   authDomain: "quicktradepro-fbed4.firebaseapp.com",
@@ -15,34 +16,24 @@ const firebaseConfig = {
 }
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig)
+let app, auth, db, storage, analytics
 
-// Initialize services
-export const auth = getAuth(app)
-export const db = getFirestore(app)
+try {
+  app = initializeApp(firebaseConfig)
+  auth = getAuth(app)
+  db = getFirestore(app)
+  storage = getStorage(app)
 
-// Initialize Analytics conditionally (only in browser)
-export const initializeAnalytics = async () => {
+  // Only initialize analytics in browser environment
   if (typeof window !== "undefined") {
-    const analyticsSupported = await isSupported()
-    if (analyticsSupported) {
-      return getAnalytics(app)
-    }
-  }
-  return null
-}
-
-// Helper function to handle Firestore permission errors
-export const handleFirestoreError = (error: any) => {
-  console.error("Firestore error:", error)
-
-  if (error.code === "permission-denied") {
-    console.log("Permission denied. Please check your Firebase security rules.")
-    return "Permission denied. Please contact the administrator."
+    analytics = getAnalytics(app)
   }
 
-  return error.message || "An error occurred"
+  console.log("Firebase initialized successfully")
+} catch (error) {
+  console.error("Error initializing Firebase:", error)
 }
 
+export { auth, db, storage, analytics }
 export default app
 
