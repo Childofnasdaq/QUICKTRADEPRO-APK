@@ -22,9 +22,11 @@ export default function SettingsPage() {
       setUserData(parsedData)
 
       // Check if license has expired
-      if (parsedData.licenseExpiry) {
+      if (parsedData.licenseExpiry && parsedData.licenseExpiry !== "NEVER") {
         const expiryDate = new Date(parsedData.licenseExpiry)
         setLicenseExpired(expiryDate < new Date())
+      } else {
+        setLicenseExpired(false)
       }
     }
   }, [])
@@ -57,7 +59,7 @@ export default function SettingsPage() {
           <CardContent className="p-4">
             <div className="flex items-center">
               <User className="h-5 w-5 text-muted-foreground mr-2" />
-              <h2 className="font-medium">Mentee Status</h2>
+              <h2 className="font-medium">Connection Status</h2>
             </div>
             <div className="mt-2 flex items-center">
               <div className="h-5 w-5 rounded-full bg-green-500 mr-2"></div>
@@ -81,9 +83,11 @@ export default function SettingsPage() {
               </div>
               <div className="flex items-center mt-1 ml-7">
                 <span className="text-xs text-muted-foreground">
-                  {userData?.licenseExpiry
-                    ? `Expires: ${new Date(userData.licenseExpiry).toLocaleDateString()}`
-                    : "Expires: 1/23/2125"}
+                  {userData?.licenseExpiry === "NEVER"
+                    ? "Expires: Never (Lifetime)"
+                    : userData?.licenseExpiry
+                      ? `Expires: ${new Date(userData.licenseExpiry).toLocaleDateString()}`
+                      : "Expires: Not specified"}
                 </span>
               </div>
             </div>

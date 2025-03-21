@@ -11,17 +11,58 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     }
 
     const client = await clientPromise
-    const db = client.db("quicktradepro")
-    const usersCollection = db.collection("users")
 
-    // Find user by ID
-    const user = await usersCollection.findOne({
-      _id: new ObjectId(userId),
-    })
+    // Get list of databases
+    const adminDb = client.db("admin")
+    const databasesList = await adminDb.admin().listDatabases()
+    const databases = databasesList.databases.map((db) => db.name)
+
+    // Try to find the user in any database and collection
+    let user = null
+    let dbUsed = ""
+    let collectionUsed = ""
+
+    // List of possible collection names to try
+    const collections = ["users", "Users", "user", "User", "accounts", "Accounts", "licenses", "Licenses"]
+
+    // Try each database
+    for (const dbName of databases) {
+      // Skip admin and local databases
+      if (dbName === "admin" || dbName === "local" || dbName === "config") continue
+
+      const db = client.db(dbName)
+
+      // Get all collections in this database
+      const dbCollections = await db.listCollections().toArray()
+
+      // Try each collection
+      for (const collectionName of [...collections, ...dbCollections.map((c) => c.name)]) {
+        try {
+          const collection = db.collection(collectionName)
+
+          // Try to find the user by ID
+          user = await collection.findOne({
+            _id: new ObjectId(userId),
+          })
+
+          if (user) {
+            dbUsed = dbName
+            collectionUsed = collectionName
+            break
+          }
+        } catch (err) {
+          continue
+        }
+      }
+
+      if (user) break
+    }
 
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 })
     }
+
+    console.log(`User found in ${dbUsed}.${collectionUsed}`)
 
     // Return user data without sensitive information
     return NextResponse.json({

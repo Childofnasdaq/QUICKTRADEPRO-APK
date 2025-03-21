@@ -4,8 +4,12 @@ export interface UserData {
   email?: string
   licenseKey?: string
   licenseExpiry?: string
+  licenseStatus?: string
+  licensePlan?: string
+  isExpiring?: boolean
   photoURL?: string
   robotName?: string
+  eaName?: string
   displayName?: string
 }
 

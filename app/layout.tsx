@@ -9,7 +9,7 @@ const inter = Inter({ subsets: ["latin"] })
 export const metadata: Metadata = {
   title: "QUICKTRADE PRO",
   description: "Trading automation platform",
-    generator: 'v0.dev'
+  generator: "v0.dev",
 }
 
 export default function RootLayout({
@@ -27,6 +27,8 @@ export default function RootLayout({
     </html>
   )
 }
+
+import "./globals.css"
 
 
 

@@ -17,28 +17,14 @@ export default function AuthPage() {
   const [licenseKey, setLicenseKey] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
-  const [connectionStatus, setConnectionStatus] = useState<string | null>(null)
 
-  // Test MongoDB connection on page load
   useEffect(() => {
-    async function testConnection() {
-      try {
-        setConnectionStatus("Testing connection...")
-        const response = await fetch("/api/test-connection")
-        const data = await response.json()
-
-        if (data.success) {
-          setConnectionStatus(`Connected to MongoDB. Found ${data.collections.length} collections.`)
-        } else {
-          setConnectionStatus(`Connection error: ${data.error}`)
-        }
-      } catch (error) {
-        setConnectionStatus(`Connection test failed: ${error instanceof Error ? error.message : "Unknown error"}`)
-      }
+    // Check if user is already authenticated
+    const authStatus = localStorage.getItem("isAuthenticated")
+    if (authStatus === "true") {
+      router.push("/dashboard")
     }
-
-    testConnection()
-  }, [])
+  }, [router])
 
   const handleAuthenticate = async () => {
     if (!mentorId || !email || !licenseKey) {
@@ -78,12 +64,6 @@ export default function AuthPage() {
             <Image src="/images/bull-logo.png" alt="QUICKTRADE PRO Logo" width={100} height={100} className="mb-4" />
             <h1 className="text-2xl font-bold">Bot Access</h1>
             <p className="text-center text-muted-foreground">Enter your credentials to access the bot details</p>
-
-            {connectionStatus && (
-              <Alert variant="default" className="w-full">
-                <AlertDescription>{connectionStatus}</AlertDescription>
-              </Alert>
-            )}
 
             {error && (
               <Alert variant="destructive" className="w-full">

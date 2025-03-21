@@ -10,25 +10,52 @@ export async function GET() {
     // Get list of databases
     const adminDb = client.db("admin")
     const databasesList = await adminDb.admin().listDatabases()
+    const databases = databasesList.databases.map((db) => db.name)
 
-    console.log(
-      "Available databases:",
-      databasesList.databases.map((db) => db.name),
-    )
+    console.log("Available databases:", databases)
 
-    // Try to access the main database
-    const db = client.db("Cluster0")
-    const collections = await db.listCollections().toArray()
-    console.log(
-      "Collections in Cluster0:",
-      collections.map((c) => c.name),
-    )
+    // Collect information about all non-system databases
+    const dbInfo = []
+
+    for (const dbName of databases) {
+      // Skip admin, local, and config databases
+      if (dbName === "admin" || dbName === "local" || dbName === "config") continue
+
+      const db = client.db(dbName)
+      const collections = await db.listCollections().toArray()
+
+      // For each collection, count documents and get a sample document
+      const collectionInfo = []
+      for (const collection of collections) {
+        const count = await db.collection(collection.name).countDocuments()
+
+        // Get a sample document structure (fields only, not values)
+        let sampleDocumentFields = []
+        if (count > 0) {
+          const sampleDoc = await db.collection(collection.name).findOne({})
+          if (sampleDoc) {
+            sampleDocumentFields = Object.keys(sampleDoc)
+          }
+        }
+
+        collectionInfo.push({
+          name: collection.name,
+          documentCount: count,
+          fields: sampleDocumentFields,
+        })
+      }
+
+      dbInfo.push({
+        name: dbName,
+        collections: collectionInfo,
+      })
+    }
 
     return NextResponse.json({
       success: true,
       message: "MongoDB connection successful",
-      databases: databasesList.databases.map((db) => db.name),
-      collections: collections.map((c) => c.name),
+      databases: databases,
+      databaseDetails: dbInfo,
     })
   } catch (error) {
     console.error("MongoDB connection test failed:", error)

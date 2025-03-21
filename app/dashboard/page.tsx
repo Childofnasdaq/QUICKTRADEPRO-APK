@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation"
 import { logoutUser } from "@/lib/auth"
 import { toast } from "@/hooks/use-toast"
 import type { UserData } from "@/lib/auth"
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -94,8 +95,17 @@ export default function DashboardPage() {
 
         <div className="w-full max-w-md text-center mb-4">
           <h1 className="text-3xl font-bold text-white">{userData?.robotName || "QUICKTRADE PRO"}</h1>
-          <p className="text-gray-400 mt-2">Elite precision, 24/7 operation</p>
+          <p className="text-gray-400 mt-2">{userData?.eaName || "QUICKTRADE PRO"}</p>
         </div>
+
+        {userData?.isExpiring && (
+          <Alert variant="warning" className="w-full max-w-md mb-4 bg-yellow-900 border-yellow-600">
+            <AlertTitle>License Expiring Soon</AlertTitle>
+            <AlertDescription>
+              Your license will expire soon. Please renew to continue using the service.
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Bot Logs Section */}
         <div className="w-full max-w-md bg-slate-800 rounded-lg p-4 mb-4">
