@@ -1,26 +1,31 @@
 export interface UserData {
   uid?: string
-  mentorId?: string
+  mentorId?: string | number
   email?: string
   licenseKey?: string
   licenseExpiry?: string
-  licenseStatus?: string
-  licensePlan?: string
-  isExpiring?: boolean
   photoURL?: string
   robotName?: string
-  eaName?: string
   displayName?: string
+  eaName?: string
+  deviceId?: string
+  licensePlan?: string
+  daysUntilExpiry?: number
 }
 
-export const authenticateUser = async (mentorId: string, email: string, licenseKey: string): Promise<UserData> => {
+export const authenticateUser = async (
+  mentorId: string,
+  email: string,
+  licenseKey: string,
+  deviceId?: string,
+): Promise<UserData> => {
   try {
     const response = await fetch("/api/auth", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ mentorId, email, licenseKey }),
+      body: JSON.stringify({ mentorId, email, licenseKey, deviceId }),
     })
 
     const data = await response.json()
@@ -38,8 +43,17 @@ export const authenticateUser = async (mentorId: string, email: string, licenseK
 
 export const logoutUser = async () => {
   try {
+    // Clear all localStorage items
     localStorage.removeItem("userData")
     localStorage.removeItem("isAuthenticated")
+    localStorage.removeItem("metatraderDetails")
+    localStorage.removeItem("tradingSymbols")
+    localStorage.removeItem("isTrading")
+    localStorage.removeItem("tradingLogs")
+    localStorage.removeItem("showLogs")
+    localStorage.removeItem("lotSize")
+    localStorage.removeItem("maxTrades")
+    // Don't remove deviceId as it's used to identify this device
   } catch (error) {
     console.error("Logout error:", error)
     throw error

@@ -1,175 +1,170 @@
 "use client"
 
 import { useState } from "react"
-import { X, CreditCard, Check, Clock } from "lucide-react"
-import { PAYMENT_PLANS, isPromoValid } from "@/lib/yoco-payment"
-import { createYocoPayment } from "@/lib/yoco-payment"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { PaymentPlan, PRICING } from "@/lib/yoco-payment-client"
+import { toast } from "@/hooks/use-toast"
 
 interface PaymentModalProps {
-  userId: string
+  isOpen: boolean
   onClose: () => void
-  onSuccess: () => void
+  onSuccess: (plan: PaymentPlan) => void
+  userId: string
+  currentPlan?: PaymentPlan
 }
 
-export function PaymentModal({ userId, onClose, onSuccess }: PaymentModalProps) {
-  const [selectedPlan, setSelectedPlan] = useState<string>(PAYMENT_PLANS.SINGLE_ACCOUNT.id)
+export default function PaymentModal({ isOpen, onClose, onSuccess, userId, currentPlan }: PaymentModalProps) {
+  const [selectedPlan, setSelectedPlan] = useState<PaymentPlan>(
+    currentPlan === PaymentPlan.SINGLE_ACCOUNT ? PaymentPlan.TWO_ACCOUNTS : PaymentPlan.UNLIMITED,
+  )
+  const [cardNumber, setCardNumber] = useState("")
+  const [expiryMonth, setExpiryMonth] = useState("")
+  const [expiryYear, setExpiryYear] = useState("")
+  const [cvv, setCvv] = useState("")
   const [isProcessing, setIsProcessing] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const promoActive = isPromoValid()
 
-  const handleProceedToPayment = async () => {
+  const handlePayment = async () => {
+    if (!cardNumber || !expiryMonth || !expiryYear || !cvv) {
+      toast({
+        title: "Missing information",
+        description: "Please fill in all card details",
+        variant: "destructive",
+      })
+      return
+    }
+
     setIsProcessing(true)
-    setError(null)
 
     try {
-      // Current URL for success/cancel redirects
-      const currentUrl = window.location.href.split("?")[0] // Remove any existing query params
-      const successUrl = `${currentUrl}?payment=success&plan=${selectedPlan}`
-      const cancelUrl = `${currentUrl}?payment=cancelled`
+      // Process payment
+      const response = await fetch("/api/payment", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId,
+          plan: selectedPlan,
+          cardDetails: {
+            cardNumber,
+            expiryMonth,
+            expiryYear,
+            cvv,
+          },
+        }),
+      })
 
-      const result = await createYocoPayment(userId, selectedPlan, successUrl, cancelUrl)
+      const data = await response.json()
 
-      if (result.success && result.redirectUrl) {
-        // Redirect to Yoco payment page
-        window.location.href = result.redirectUrl
-      } else {
-        throw new Error(result.error || "Failed to create payment")
+      if (!response.ok) {
+        throw new Error(data.error || "Payment failed")
       }
-    } catch (error: any) {
+
+      if (data.success) {
+        toast({
+          title: "Payment successful",
+          description: `Your account has been upgraded to ${selectedPlan.replace("_", " ")}`,
+        })
+        onSuccess(selectedPlan)
+      } else {
+        throw new Error(data.error || "Payment failed")
+      }
+    } catch (error) {
       console.error("Payment error:", error)
-      setError(error.message || "An unexpected error occurred")
+      toast({
+        title: "Payment failed",
+        description: error instanceof Error ? error.message : "An error occurred during payment",
+        variant: "destructive",
+      })
     } finally {
       setIsProcessing(false)
     }
   }
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
-      <div className="bg-gray-900 rounded-lg border border-red-900 p-6 w-full max-w-md">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-medium text-red-500">Upgrade Your Account</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-white">
-            <X size={24} />
-          </button>
-        </div>
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>Upgrade Your Account</DialogTitle>
+          <DialogDescription>Choose a plan to connect more trading accounts</DialogDescription>
+        </DialogHeader>
 
-        <div className="mb-6">
-          <p className="text-gray-300 mb-4">
-            You've reached the limit of 1 free account. Choose a plan to add more trading accounts:
-          </p>
-
-          <div className="space-y-4">
-            <div
-              className={`p-4 rounded-lg border cursor-pointer ${
-                selectedPlan === PAYMENT_PLANS.SINGLE_ACCOUNT.id
-                  ? "border-red-500 bg-red-900/20"
-                  : "border-gray-700 hover:border-red-500/50"
-              }`}
-              onClick={() => setSelectedPlan(PAYMENT_PLANS.SINGLE_ACCOUNT.id)}
-            >
-              <div className="flex justify-between items-center">
-                <div>
-                  <h3 className="font-medium text-white">{PAYMENT_PLANS.SINGLE_ACCOUNT.name}</h3>
-                  <p className="text-sm text-gray-400">{PAYMENT_PLANS.SINGLE_ACCOUNT.description}</p>
+        <div className="grid gap-4 py-4">
+          <div className="space-y-2">
+            <Label>Select Plan</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                variant={selectedPlan === PaymentPlan.TWO_ACCOUNTS ? "default" : "outline"}
+                onClick={() => setSelectedPlan(PaymentPlan.TWO_ACCOUNTS)}
+                className={selectedPlan === PaymentPlan.TWO_ACCOUNTS ? "bg-blue-500" : ""}
+              >
+                <div className="text-left">
+                  <div className="font-bold">2 Accounts</div>
+                  <div className="text-sm">R{PRICING[PaymentPlan.TWO_ACCOUNTS]}</div>
                 </div>
-                <div className="text-right">
-                  <div className="text-lg font-bold text-white">R300</div>
-                  <div className="text-xs text-gray-400">One-time payment</div>
+              </Button>
+              <Button
+                variant={selectedPlan === PaymentPlan.UNLIMITED ? "default" : "outline"}
+                onClick={() => setSelectedPlan(PaymentPlan.UNLIMITED)}
+                className={selectedPlan === PaymentPlan.UNLIMITED ? "bg-blue-500" : ""}
+              >
+                <div className="text-left">
+                  <div className="font-bold">Unlimited</div>
+                  <div className="text-sm">R{PRICING[PaymentPlan.UNLIMITED]}</div>
                 </div>
-              </div>
-              {selectedPlan === PAYMENT_PLANS.SINGLE_ACCOUNT.id && (
-                <div className="mt-2 text-red-500 flex items-center">
-                  <Check size={16} className="mr-1" /> Selected
-                </div>
-              )}
+              </Button>
             </div>
+          </div>
 
-            {promoActive ? (
-              <div
-                className={`p-4 rounded-lg border cursor-pointer ${
-                  selectedPlan === PAYMENT_PLANS.PROMO_UNLIMITED.id
-                    ? "border-red-500 bg-red-900/20"
-                    : "border-gray-700 hover:border-red-500/50"
-                }`}
-                onClick={() => setSelectedPlan(PAYMENT_PLANS.PROMO_UNLIMITED.id)}
-              >
-                <div className="flex justify-between items-center">
-                  <div>
-                    <div className="flex items-center">
-                      <h3 className="font-medium text-white">{PAYMENT_PLANS.PROMO_UNLIMITED.name}</h3>
-                      <span className="ml-2 bg-yellow-600 text-yellow-100 text-xs px-2 py-0.5 rounded-full flex items-center">
-                        <Clock size={12} className="mr-1" /> Limited Time
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-400">{PAYMENT_PLANS.PROMO_UNLIMITED.description}</p>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-lg font-bold text-white">R5,000</div>
-                    <div className="text-xs text-gray-400">
-                      <span className="line-through text-gray-500">R6,000</span> Special offer
-                    </div>
-                  </div>
-                </div>
-                {selectedPlan === PAYMENT_PLANS.PROMO_UNLIMITED.id && (
-                  <div className="mt-2 text-red-500 flex items-center">
-                    <Check size={16} className="mr-1" /> Selected
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div
-                className={`p-4 rounded-lg border cursor-pointer ${
-                  selectedPlan === PAYMENT_PLANS.UNLIMITED_ACCOUNTS.id
-                    ? "border-red-500 bg-red-900/20"
-                    : "border-gray-700 hover:border-red-500/50"
-                }`}
-                onClick={() => setSelectedPlan(PAYMENT_PLANS.UNLIMITED_ACCOUNTS.id)}
-              >
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h3 className="font-medium text-white">{PAYMENT_PLANS.UNLIMITED_ACCOUNTS.name}</h3>
-                    <p className="text-sm text-gray-400">{PAYMENT_PLANS.UNLIMITED_ACCOUNTS.description}</p>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-lg font-bold text-white">R6,000</div>
-                    <div className="text-xs text-gray-400">One-time payment</div>
-                  </div>
-                </div>
-                {selectedPlan === PAYMENT_PLANS.UNLIMITED_ACCOUNTS.id && (
-                  <div className="mt-2 text-red-500 flex items-center">
-                    <Check size={16} className="mr-1" /> Selected
-                  </div>
-                )}
-              </div>
-            )}
+          <div className="space-y-2">
+            <Label htmlFor="cardNumber">Card Number</Label>
+            <Input
+              id="cardNumber"
+              placeholder="4242 4242 4242 4242"
+              value={cardNumber}
+              onChange={(e) => setCardNumber(e.target.value)}
+            />
+          </div>
+
+          <div className="grid grid-cols-3 gap-2">
+            <div className="space-y-2">
+              <Label htmlFor="expiryMonth">Month</Label>
+              <Input
+                id="expiryMonth"
+                placeholder="MM"
+                value={expiryMonth}
+                onChange={(e) => setExpiryMonth(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="expiryYear">Year</Label>
+              <Input
+                id="expiryYear"
+                placeholder="YY"
+                value={expiryYear}
+                onChange={(e) => setExpiryYear(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="cvv">CVV</Label>
+              <Input id="cvv" placeholder="123" value={cvv} onChange={(e) => setCvv(e.target.value)} />
+            </div>
           </div>
         </div>
 
-        {error && <div className="mb-4 bg-red-900/30 text-red-500 p-3 rounded-md text-sm">{error}</div>}
-
-        <button
-          onClick={handleProceedToPayment}
-          disabled={isProcessing}
-          className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-md flex items-center justify-center"
-        >
-          {isProcessing ? (
-            <>
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-              Processing...
-            </>
-          ) : (
-            <>
-              <CreditCard size={18} className="mr-2" />
-              Proceed to Payment
-            </>
-          )}
-        </button>
-
-        <p className="mt-4 text-xs text-center text-gray-400">
-          Secure payment powered by Yoco. Your payment information is never stored on our servers.
-        </p>
-      </div>
-    </div>
+        <div className="flex justify-between">
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={handlePayment} disabled={isProcessing} className="bg-blue-500">
+            {isProcessing ? "Processing..." : `Pay R${PRICING[selectedPlan]}`}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 

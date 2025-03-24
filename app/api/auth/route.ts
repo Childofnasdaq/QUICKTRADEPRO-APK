@@ -1,180 +1,148 @@
 import { type NextRequest, NextResponse } from "next/server"
 import clientPromise from "@/lib/mongodb"
+import { v4 as uuidv4 } from "uuid"
 
 export async function POST(request: NextRequest) {
   try {
-    const { mentorId, email, licenseKey } = await request.json()
-    console.log("Auth request received:", { mentorId, email, licenseKey })
+    const { mentorId, email, licenseKey, deviceId } = await request.json()
 
     if (!mentorId || !email || !licenseKey) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
+    // Generate a device ID if not provided
+    const currentDeviceId = deviceId || uuidv4()
+
     // Connect to MongoDB
-    console.log("Connecting to MongoDB...")
     const client = await clientPromise
-    console.log("MongoDB connected successfully")
 
     // Get all databases
     const adminDb = client.db("admin")
     const databasesList = await adminDb.admin().listDatabases()
-    const databases = databasesList.databases.map((db) => db.name)
-    console.log("Available databases:", databases)
+    const databases = databasesList.databases
+      .map((db) => db.name)
+      .filter((name) => name !== "admin" && name !== "local")
 
-    // Find the user first
-    let user = null
-    let userDbName = ""
-    let userCollectionName = ""
+    // Convert mentorId to number if it's a string
+    const mentorIdValue = typeof mentorId === "string" ? Number.parseInt(mentorId, 10) : mentorId
 
-    // Try each database to find the user
+    // Try each database
     for (const dbName of databases) {
-      // Skip admin and local databases
-      if (dbName === "admin" || dbName === "local" || dbName === "config") continue
-
-      console.log(`Searching for user in database: ${dbName}`)
       const db = client.db(dbName)
+      const collections = await db.listCollections().toArray()
+      const collectionNames = collections.map((c) => c.name)
 
-      // Get all collections in this database
-      const dbCollections = await db.listCollections().toArray()
-      const collectionNames = dbCollections.map((c) => c.name)
-      console.log(`Collections in ${dbName}:`, collectionNames)
+      // Check if this database has the collections we need
+      if (!collectionNames.includes("users")) continue
 
-      // Try to find user in users collection
-      if (collectionNames.includes("users")) {
-        console.log(`Trying to find user in ${dbName}.users`)
-        const usersCollection = db.collection("users")
+      // Try to find the user
+      const usersCollection = db.collection("users")
+      const user = await usersCollection.findOne({
+        email: email,
+        mentorId: mentorIdValue,
+      })
 
-        // Try to find the user by mentorId and email
-        user = await usersCollection.findOne({
-          mentorId: Number.parseInt(mentorId),
-          email: email,
-        })
+      if (!user) continue
 
-        if (!user) {
-          // Try with mentorId as string
-          user = await usersCollection.findOne({
-            mentorId: mentorId,
-            email: email,
-          })
-        }
-
-        if (user) {
-          console.log(`User found in ${dbName}.users:`, { id: user.id, email: user.email })
-          userDbName = dbName
-          userCollectionName = "users"
-          break
-        }
-      }
-    }
-
-    if (!user) {
-      console.log("User not found in any database")
-      return NextResponse.json({ error: "Invalid credentials. User not found." }, { status: 401 })
-    }
-
-    // Now find the license key
-    let licenseKeyDoc = null
-    let licenseDbName = ""
-    let licenseCollectionName = ""
-
-    // Try to find the license key in the licenseKeys collection
-    for (const dbName of databases) {
-      // Skip admin and local databases
-      if (dbName === "admin" || dbName === "local" || dbName === "config") continue
-
-      console.log(`Searching for license key in database: ${dbName}`)
-      const db = client.db(dbName)
-
-      // Get all collections in this database
-      const dbCollections = await db.listCollections().toArray()
-      const collectionNames = dbCollections.map((c) => c.name)
+      // User found, now check license key
+      let licenseKeyDoc = null
 
       // Check if licenseKeys collection exists
       if (collectionNames.includes("licenseKeys")) {
-        console.log(`Trying to find license key in ${dbName}.licenseKeys`)
         const licenseKeysCollection = db.collection("licenseKeys")
+        licenseKeyDoc = await licenseKeysCollection.findOne({ key: licenseKey })
 
-        // Try to find the license key by user id and the provided key
-        licenseKeyDoc = await licenseKeysCollection.findOne({
-          key: licenseKey,
-          createdBy: user.id,
-        })
+        if (!licenseKeyDoc) {
+          return NextResponse.json({ error: "Invalid license key." }, { status: 401 })
+        }
 
-        if (licenseKeyDoc) {
-          console.log(`License key found in ${dbName}.licenseKeys:`, { id: licenseKeyDoc.id, key: licenseKeyDoc.key })
-          licenseDbName = dbName
-          licenseCollectionName = "licenseKeys"
-          break
+        // Check if license key is deactivated
+        if (licenseKeyDoc.isDeactivated === true || licenseKeyDoc.status === "used") {
+          return NextResponse.json(
+            { error: "This license key has expired or has been used. Please contact support for a new license key." },
+            { status: 401 },
+          )
+        }
+
+        // Check if license key is already activated on another device
+        if (licenseKeyDoc.isActivated && licenseKeyDoc.deviceId && licenseKeyDoc.deviceId !== currentDeviceId) {
+          return NextResponse.json(
+            {
+              error:
+                "This license key has been used on another device. Please contact your mentor for a new license key.",
+            },
+            { status: 401 },
+          )
+        }
+
+        // Check if license has expired
+        if (licenseKeyDoc.expiryDate && licenseKeyDoc.plan !== "lifetime") {
+          const expiryDate = new Date(licenseKeyDoc.expiryDate)
+          if (expiryDate < new Date()) {
+            return NextResponse.json(
+              { error: "Your license key has expired. Please contact your mentor for a new license key." },
+              { status: 401 },
+            )
+          }
+        }
+
+        // Activate license key on this device if not already activated
+        if (!licenseKeyDoc.isActivated || !licenseKeyDoc.deviceId) {
+          await licenseKeysCollection.updateOne(
+            { key: licenseKey },
+            {
+              $set: {
+                isActivated: true,
+                deviceId: currentDeviceId,
+                activationDate: new Date(),
+              },
+            },
+          )
         }
       }
-    }
 
-    if (!licenseKeyDoc) {
-      console.log("License key not found or does not match")
-      return NextResponse.json({ error: "Invalid license key." }, { status: 401 })
-    }
-
-    // Check license expiry if it exists
-    let isExpiring = false
-    let expiryDate = null
-
-    if (licenseKeyDoc.expiryDate && licenseKeyDoc.plan !== "lifetime") {
-      expiryDate = new Date(licenseKeyDoc.expiryDate)
-
-      // Check if license is expired
-      if (expiryDate < new Date()) {
-        console.log("License expired")
-        return NextResponse.json(
-          { error: "Your license key has expired. Please renew it to continue." },
-          { status: 401 },
-        )
+      // Get EA information if available
+      let eaInfo = null
+      if (collectionNames.includes("eas") && licenseKeyDoc.eaId) {
+        const easCollection = db.collection("eas")
+        eaInfo = await easCollection.findOne({ id: licenseKeyDoc.eaId })
       }
 
-      // Check if license is about to expire (1 day)
-      const oneDayFromNow = new Date()
-      oneDayFromNow.setDate(oneDayFromNow.getDate() + 1)
+      // Calculate days until expiry
+      let daysUntilExpiry = null
+      let expiryDate = null
 
-      if (expiryDate <= oneDayFromNow) {
-        isExpiring = true
+      if (licenseKeyDoc.expiryDate && licenseKeyDoc.plan !== "lifetime") {
+        expiryDate = new Date(licenseKeyDoc.expiryDate)
+        const today = new Date()
+        const diffTime = expiryDate.getTime() - today.getTime()
+        daysUntilExpiry = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
       }
+
+      // Return user data
+      return NextResponse.json({
+        success: true,
+        user: {
+          uid: user._id.toString(),
+          email: user.email,
+          mentorId: user.mentorId,
+          licenseKey: licenseKeyDoc.key,
+          licenseExpiry: licenseKeyDoc.expiryDate || "NEVER",
+          licenseStatus: licenseKeyDoc.status,
+          licensePlan: licenseKeyDoc.plan || "standard",
+          daysUntilExpiry: daysUntilExpiry,
+          photoURL: user.avatar,
+          robotName: licenseKeyDoc.username || "QUICKTRADE PRO",
+          eaName: eaInfo?.name || licenseKeyDoc.eaName || "QUICKTRADE PRO",
+          displayName: user.displayName || user.name,
+          deviceId: currentDeviceId,
+          database: dbName,
+        },
+      })
     }
 
-    // Get EA information
-    let eaInfo = null
-    if (licenseKeyDoc.eaId) {
-      for (const dbName of databases) {
-        if (dbName === "admin" || dbName === "local" || dbName === "config") continue
-
-        const db = client.db(dbName)
-        const collections = await db.listCollections().toArray()
-        const collectionNames = collections.map((c) => c.name)
-
-        if (collectionNames.includes("eas")) {
-          const easCollection = db.collection("eas")
-          eaInfo = await easCollection.findOne({ id: licenseKeyDoc.eaId })
-          if (eaInfo) break
-        }
-      }
-    }
-
-    // Return user data combined with license information
-    return NextResponse.json({
-      success: true,
-      user: {
-        uid: user._id.toString(),
-        email: user.email,
-        mentorId: user.mentorId,
-        licenseExpiry: licenseKeyDoc.plan === "lifetime" ? "NEVER" : licenseKeyDoc.expiryDate,
-        licenseKey: licenseKeyDoc.key,
-        licenseStatus: licenseKeyDoc.status,
-        licensePlan: licenseKeyDoc.plan,
-        isExpiring: isExpiring,
-        photoURL: user.avatar,
-        robotName: licenseKeyDoc.username || eaInfo?.name || "QUICKTRADE PRO",
-        eaName: eaInfo?.name || licenseKeyDoc.eaName || "QUICKTRADE PRO",
-        displayName: user.displayName || user.name,
-      },
-    })
+    // If we get here, we didn't find the user in any database
+    return NextResponse.json({ error: "User not found in any database. Check your credentials." }, { status: 401 })
   } catch (error) {
     console.error("Authentication error:", error)
     return NextResponse.json(

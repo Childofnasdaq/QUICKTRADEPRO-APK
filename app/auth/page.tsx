@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { authenticateUser } from "@/lib/auth"
 import { toast } from "@/hooks/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { v4 as uuidv4 } from "uuid"
 
 export default function AuthPage() {
   const router = useRouter()
@@ -17,14 +18,17 @@ export default function AuthPage() {
   const [licenseKey, setLicenseKey] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
+  const [deviceId, setDeviceId] = useState("")
 
   useEffect(() => {
-    // Check if user is already authenticated
-    const authStatus = localStorage.getItem("isAuthenticated")
-    if (authStatus === "true") {
-      router.push("/dashboard")
+    // Get or create device ID
+    let storedDeviceId = localStorage.getItem("deviceId")
+    if (!storedDeviceId) {
+      storedDeviceId = uuidv4()
+      localStorage.setItem("deviceId", storedDeviceId)
     }
-  }, [router])
+    setDeviceId(storedDeviceId)
+  }, [])
 
   const handleAuthenticate = async () => {
     if (!mentorId || !email || !licenseKey) {
@@ -36,7 +40,8 @@ export default function AuthPage() {
     setError("")
 
     try {
-      const userData = await authenticateUser(mentorId, email, licenseKey)
+      // Attempt authentication
+      const userData = await authenticateUser(mentorId, email, licenseKey, deviceId)
 
       // Store user data in localStorage
       localStorage.setItem("userData", JSON.stringify(userData))
@@ -61,7 +66,14 @@ export default function AuthPage() {
       <Card className="w-full max-w-md">
         <CardContent className="pt-6">
           <div className="flex flex-col items-center space-y-6">
-            <Image src="/images/bull-logo.png" alt="QUICKTRADE PRO Logo" width={100} height={100} className="mb-4" />
+            <Image
+              src="/images/bull-logo.png"
+              alt="QUICKTRADE PRO Logo"
+              width={120}
+              height={120}
+              className="mb-4"
+              priority
+            />
             <h1 className="text-2xl font-bold">Bot Access</h1>
             <p className="text-center text-muted-foreground">Enter your credentials to access the bot details</p>
 

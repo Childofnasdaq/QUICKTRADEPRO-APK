@@ -1,6 +1,6 @@
 import { MongoClient } from "mongodb"
 
-// MongoDB connection string
+// MongoDB connection string from the user
 const uri =
   "mongodb+srv://childofnasdaq:Godfirst078@cluster0.a5kt9.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 const options = {}

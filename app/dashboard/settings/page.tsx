@@ -4,15 +4,21 @@ import { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Plus, RefreshCw, User, Shield, List, Box } from "lucide-react"
+import { Plus, RefreshCw, User, Shield, List, Box, X, AlertTriangle } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 import type { UserData } from "@/lib/auth"
+import Image from "next/image"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
 export default function SettingsPage() {
   const [symbols, setSymbols] = useState<string[]>([])
   const [newSymbol, setNewSymbol] = useState("")
   const [userData, setUserData] = useState<UserData | null>(null)
   const [licenseExpired, setLicenseExpired] = useState(false)
+  const [lotSize, setLotSize] = useState("0.01")
+  const [maxTrades, setMaxTrades] = useState("0")
+  const [isSaving, setIsSaving] = useState(false)
+  const [showExpiryWarning, setShowExpiryWarning] = useState(false)
 
   useEffect(() => {
     // Get user data from localStorage
@@ -24,35 +30,135 @@ export default function SettingsPage() {
       // Check if license has expired
       if (parsedData.licenseExpiry && parsedData.licenseExpiry !== "NEVER") {
         const expiryDate = new Date(parsedData.licenseExpiry)
-        setLicenseExpired(expiryDate < new Date())
-      } else {
-        setLicenseExpired(false)
+        // Don't mark lifetime licenses as expired
+        setLicenseExpired(parsedData.licensePlan !== "lifetime" && expiryDate < new Date())
+
+        // Show warning if license expires in 2 days or less
+        if (parsedData.daysUntilExpiry !== null && parsedData.daysUntilExpiry !== undefined) {
+          setShowExpiryWarning(parsedData.daysUntilExpiry <= 2 && parsedData.daysUntilExpiry > 0)
+        }
       }
+    }
+
+    // Load saved symbols if available
+    const savedSymbols = localStorage.getItem("tradingSymbols")
+    if (savedSymbols) {
+      setSymbols(JSON.parse(savedSymbols))
+    }
+
+    // Load saved lot size and max trades
+    const savedLotSize = localStorage.getItem("lotSize")
+    if (savedLotSize) {
+      setLotSize(savedLotSize)
+    }
+
+    const savedMaxTrades = localStorage.getItem("maxTrades")
+    if (savedMaxTrades) {
+      setMaxTrades(savedMaxTrades)
     }
   }, [])
 
   const handleAddSymbol = () => {
     if (newSymbol && !symbols.includes(newSymbol)) {
-      setSymbols([...symbols, newSymbol])
+      const updatedSymbols = [...symbols, newSymbol]
+      setSymbols(updatedSymbols)
       setNewSymbol("")
     }
   }
 
+  const handleRemoveSymbol = (symbolToRemove: string) => {
+    const updatedSymbols = symbols.filter((symbol) => symbol !== symbolToRemove)
+    setSymbols(updatedSymbols)
+  }
+
   const handleRefresh = () => {
+    // Load saved symbols if available
+    const savedSymbols = localStorage.getItem("tradingSymbols")
+    if (savedSymbols) {
+      setSymbols(JSON.parse(savedSymbols))
+    }
+
+    // Load saved lot size and max trades
+    const savedLotSize = localStorage.getItem("lotSize")
+    if (savedLotSize) {
+      setLotSize(savedLotSize)
+    }
+
+    const savedMaxTrades = localStorage.getItem("maxTrades")
+    if (savedMaxTrades) {
+      setMaxTrades(savedMaxTrades)
+    }
+
     toast({
       title: "Settings refreshed",
       description: "Your settings have been refreshed",
     })
   }
 
+  const handleSaveSettings = async () => {
+    setIsSaving(true)
+
+    try {
+      // Save all settings to localStorage
+      localStorage.setItem("tradingSymbols", JSON.stringify(symbols))
+      localStorage.setItem("lotSize", lotSize)
+      localStorage.setItem("maxTrades", maxTrades)
+
+      // Simulate API call to save settings
+      await new Promise((resolve) => setTimeout(resolve, 500))
+
+      toast({
+        title: "Settings saved",
+        description: "Your trading settings have been saved successfully",
+      })
+    } catch (error) {
+      console.error("Failed to save settings:", error)
+      toast({
+        title: "Error",
+        description: "Failed to save settings. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  // Helper function to format license plan name
+  const formatLicensePlan = (plan: string) => {
+    if (!plan) return "Standard"
+
+    // Capitalize first letter and replace hyphens with spaces
+    return plan.charAt(0).toUpperCase() + plan.slice(1).replace(/-/g, " ")
+  }
+
   return (
     <div className="p-4 pb-20">
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-bold">Trading Settings</h1>
+        <div className="flex items-center">
+          <Image
+            src="/images/bull-logo.png"
+            alt="QUICKTRADE PRO Logo"
+            width={30}
+            height={30}
+            className="mr-2"
+            priority
+          />
+          <h1 className="text-xl font-bold">Trading Settings</h1>
+        </div>
         <Button variant="ghost" size="icon" onClick={handleRefresh}>
           <RefreshCw className="h-4 w-4" />
         </Button>
       </div>
+
+      {showExpiryWarning && (
+        <Alert variant="warning" className="mb-4 bg-yellow-100 dark:bg-yellow-900 border-yellow-400">
+          <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+          <AlertDescription className="text-yellow-800 dark:text-yellow-300">
+            Your license will expire in {userData?.daysUntilExpiry} day{userData?.daysUntilExpiry !== 1 ? "s" : ""}.
+            Please contact your mentor to renew.
+          </AlertDescription>
+        </Alert>
+      )}
 
       <div className="space-y-4">
         <Card>
@@ -83,9 +189,14 @@ export default function SettingsPage() {
               </div>
               <div className="flex items-center mt-1 ml-7">
                 <span className="text-xs text-muted-foreground">
-                  {userData?.licenseExpiry === "NEVER"
+                  Plan: {formatLicensePlan(userData?.licensePlan || "standard")}
+                </span>
+              </div>
+              <div className="flex items-center mt-1 ml-7">
+                <span className="text-xs text-muted-foreground">
+                  {userData?.licensePlan === "lifetime"
                     ? "Expires: Never (Lifetime)"
-                    : userData?.licenseExpiry
+                    : userData?.licenseExpiry && userData.licenseExpiry !== "NEVER"
                       ? `Expires: ${new Date(userData.licenseExpiry).toLocaleDateString()}`
                       : "Expires: Not specified"}
                 </span>
@@ -103,7 +214,7 @@ export default function SettingsPage() {
 
             <div className="mt-3 flex items-center">
               <Input
-                placeholder="Enter symbol"
+                placeholder="Enter symbol (e.g. EURUSDm)"
                 value={newSymbol}
                 onChange={(e) => setNewSymbol(e.target.value)}
                 className="flex-1"
@@ -114,22 +225,37 @@ export default function SettingsPage() {
             </div>
 
             <div className="mt-3 space-y-2">
-              {symbols.map((symbol, index) => (
-                <div key={index} className="bg-blue-500 text-white rounded-md px-3 py-1 inline-block mr-2">
-                  {symbol} ✓
+              {symbols.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {symbols.map((symbol, index) => (
+                    <div key={index} className="bg-blue-500 text-white rounded-md px-3 py-1 inline-flex items-center">
+                      {symbol}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5 ml-1 p-0 text-white hover:bg-blue-600"
+                        onClick={() => handleRemoveSymbol(symbol)}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              ) : (
+                <p className="text-sm text-muted-foreground">No symbols added yet. Add symbols to start trading.</p>
+              )}
+
               {symbols.length > 0 && (
                 <div className="mt-2">
                   <div className="grid grid-cols-2 gap-4 mt-2">
                     <div>
                       <p className="text-xs mb-1">Lot Size</p>
-                      <Input defaultValue="0.01" />
+                      <Input value={lotSize} onChange={(e) => setLotSize(e.target.value)} />
                       <p className="text-xs mt-1">Min Lot Size: 0.01</p>
                     </div>
                     <div>
                       <p className="text-xs mb-1">Max Trades</p>
-                      <Input defaultValue="0" />
+                      <Input value={maxTrades} onChange={(e) => setMaxTrades(e.target.value)} />
                       <p className="text-xs mt-1">0 for unlimited trades</p>
                     </div>
                   </div>
@@ -145,18 +271,29 @@ export default function SettingsPage() {
               <Box className="h-5 w-5 text-muted-foreground mr-2" />
               <h2 className="font-medium">Available Symbols</h2>
             </div>
-            <div className="mt-2">
-              <div className="bg-gray-100 dark:bg-slate-800 p-2 rounded-md">
-                <div className="flex justify-between items-center">
-                  <span>XAUUSDm</span>
-                  <span className="text-xs text-muted-foreground">Min: 0.01</span>
-                </div>
-              </div>
+            <div className="mt-2 space-y-2">
+              {/* Only show symbols that the user has added */}
+              {symbols.length > 0 ? (
+                symbols.map((symbol, index) => (
+                  <div key={index} className="bg-gray-100 dark:bg-slate-800 p-2 rounded-md">
+                    <div className="flex justify-between items-center">
+                      <span>{symbol}</span>
+                      <span className="text-xs text-muted-foreground">Min: 0.01</span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No symbols added yet. Add symbols above to see them here.
+                </p>
+              )}
             </div>
           </CardContent>
         </Card>
 
-        <Button className="w-full bg-blue-500 hover:bg-blue-600">Save Settings</Button>
+        <Button className="w-full bg-blue-500 hover:bg-blue-600" onClick={handleSaveSettings} disabled={isSaving}>
+          {isSaving ? "Saving..." : "Save Settings"}
+        </Button>
       </div>
     </div>
   )
