@@ -1,15 +1,13 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect } from "react"
 import Image from "next/image"
-import { Play, CircleStopIcon as Stop, ChevronUp, ChevronDown, LogOut, AlertTriangle } from "lucide-react"
+import { Play, CircleStopIcon as Stop, ChevronUp, ChevronDown, LogOut, CheckCircle, XCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useRouter } from "next/navigation"
 import { logoutUser } from "@/lib/auth"
 import { toast } from "@/hooks/use-toast"
 import type { UserData } from "@/lib/auth"
-import { MarketAnalysisService } from "@/lib/market-analysis"
-import { COMMENT_PREFIX } from "@/lib/trading-constants"
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -18,14 +16,13 @@ export default function DashboardPage() {
   const [userData, setUserData] = useState<UserData | null>(null)
   const [showLogs, setShowLogs] = useState(true)
   const [tradingSymbols, setTradingSymbols] = useState<string[]>([])
-  const [accountDetails, setAccountDetails] = useState<any>(null)
-  const [lotSize, setLotSize] = useState("0.01")
-  const [maxTrades, setMaxTrades] = useState(0)
-  const [tradingInterval, setTradingInterval] = useState<NodeJS.Timeout | null>(null)
-  const [isButtonDisabled, setIsButtonDisabled] = useState(false)
-  const [marketAnalysis, setMarketAnalysis] = useState<any>(null)
-  const tradeCount = useRef(0)
-  const initialTradeExecuted = useRef(false)
+  const [accountId, setAccountId] = useState<string | null>(null)
+  const [lastTradeSuccess, setLastTradeSuccess] = useState<boolean | null>(null)
+  const [lotSize, setLotSize] = useState<string>("0.01")
+  const [maxTrades, setMaxTrades] = useState<number>(0)
+  const [currentTrades, setCurrentTrades] = useState<{
+    [symbol: string]: { count: number; direction: "BUY" | "SELL" | null }
+  }>({})
 
   useEffect(() => {
     // Get user data from localStorage
@@ -57,13 +54,15 @@ export default function DashboardPage() {
     // Get trading symbols
     const savedSymbols = localStorage.getItem("tradingSymbols")
     if (savedSymbols) {
-      setTradingSymbols(JSON.parse(savedSymbols))
-    }
+      const symbols = JSON.parse(savedSymbols)
+      setTradingSymbols(symbols)
 
-    // Get account details
-    const savedAccountDetails = localStorage.getItem("tradingAccountDetails")
-    if (savedAccountDetails) {
-      setAccountDetails(JSON.parse(savedAccountDetails))
+      // Initialize currentTrades state with the symbols
+      const trades = {}
+      symbols.forEach((symbol) => {
+        trades[symbol] = { count: 0, direction: null }
+      })
+      setCurrentTrades(trades)
     }
 
     // Get lot size
@@ -73,345 +72,20 @@ export default function DashboardPage() {
     }
 
     // Get max trades
-    const savedMaxTrades = localStorage.getItem("maxTrades")
-    if (savedMaxTrades) {
-      setMaxTrades(Number.parseInt(savedMaxTrades, 10) || 0)
+    const savedMaxTrades = localStorage.getItem("maxTrades") || "0"
+    setMaxTrades(Number.parseInt(savedMaxTrades, 10))
+
+    // Get MetaAPI account ID
+    const metatraderDetails = localStorage.getItem("metatraderDetails")
+    if (metatraderDetails) {
+      const details = JSON.parse(metatraderDetails)
+      if (details.accountId) {
+        setAccountId(details.accountId)
+      }
     }
   }, [])
-
-  const analyzeMarketForSymbol = useCallback(async (symbol: string) => {
-    try {
-      // Log the analysis start
-      const analysisStartLog = `[${getCurrentTime()}] ${symbol}: Analyzing market conditions...`
-      setLogs((prevLogs) => {
-        const newLogs = [...prevLogs, analysisStartLog]
-        localStorage.setItem("tradingLogs", JSON.stringify(newLogs))
-        return newLogs
-      })
-
-      // Perform market analysis
-      const analysis = await MarketAnalysisService.analyzeMarket(symbol)
-      setMarketAnalysis(analysis)
-
-      // Log the analysis results
-      const analysisResultLog = `[${getCurrentTime()}] ${symbol}: Analysis complete - Trend: ${analysis.trend}, Strength: ${analysis.strength.toFixed(1)}, Confidence: ${analysis.confidence.toFixed(1)}%`
-      setLogs((prevLogs) => {
-        const newLogs = [...prevLogs, analysisResultLog]
-        localStorage.setItem("tradingLogs", JSON.stringify(newLogs))
-        return newLogs
-      })
-
-      return analysis
-    } catch (error) {
-      console.error("Market analysis error:", error)
-      const errorLog = `[${getCurrentTime()}] ${symbol}: Analysis error - ${error instanceof Error ? error.message : "Unknown error"}`
-      setLogs((prevLogs) => {
-        const newLogs = [...prevLogs, errorLog]
-        localStorage.setItem("tradingLogs", JSON.stringify(newLogs))
-        return newLogs
-      })
-      return null
-    }
-  }, [])
-
-  const executeTrade = useCallback(
-    async (symbol: string, type: string, analysis: any) => {
-      try {
-        if (!accountDetails || !accountDetails.accountId) {
-          throw new Error("Trading account not connected")
-        }
-
-        // Log the trade execution
-        const executionLog = `[${getCurrentTime()}] ${symbol}: Executing ${type} order...`
-        setLogs((prevLogs) => {
-          const newLogs = [...prevLogs, executionLog]
-          localStorage.setItem("tradingLogs", JSON.stringify(newLogs))
-          return newLogs
-        })
-
-        // Calculate stop loss and take profit from analysis
-        const stopLoss = analysis ? analysis.stopLoss : undefined
-        const takeProfit = analysis ? analysis.takeProfit : undefined
-
-        console.log("Executing trade:", {
-          symbol,
-          type,
-          lotSize,
-          accountId: accountDetails.accountId,
-        })
-
-        // Execute the trade via API
-        const response = await fetch("/api/trading-server", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            action: "EXECUTE_TRADE",
-            userId: userData?.uid || "test-user",
-            accountId: accountDetails.accountId,
-            platform: accountDetails.platform,
-            symbol,
-            type,
-            lotSize,
-            stopLoss,
-            takeProfit,
-            comment: `${COMMENT_PREFIX}~${userData?.displayName || "User"}`,
-          }),
-        })
-
-        const data = await response.json()
-        console.log("Trade execution response:", data)
-
-        if (data.success) {
-          // Increment trade count
-          tradeCount.current += 1
-
-          // Log the successful trade
-          const tradeLog = `[${getCurrentTime()}] ${symbol}: Order executed - ${type} ${lotSize} lot(s) at ${data.details.executionPrice} with SL: ${data.details.stopLoss} TP: ${data.details.takeProfit}`
-          setLogs((prevLogs) => {
-            const newLogs = [...prevLogs, tradeLog]
-            localStorage.setItem("tradingLogs", JSON.stringify(newLogs))
-            return newLogs
-          })
-
-          // Mark initial trade as executed
-          initialTradeExecuted.current = true
-
-          return true
-        } else {
-          // Log the error
-          const errorLog = `[${getCurrentTime()}] ${symbol}: Trade execution failed - ${data.error}`
-          setLogs((prevLogs) => {
-            const newLogs = [...prevLogs, errorLog]
-            localStorage.setItem("tradingLogs", JSON.stringify(newLogs))
-            return newLogs
-          })
-
-          return false
-        }
-      } catch (error) {
-        console.error("Trade execution error:", error)
-        // Log the error
-        const errorLog = `[${getCurrentTime()}] ${symbol}: Error executing trade - ${error instanceof Error ? error.message : "Unknown error"}`
-        setLogs((prevLogs) => {
-          const newLogs = [...prevLogs, errorLog]
-          localStorage.setItem("tradingLogs", JSON.stringify(newLogs))
-          return newLogs
-        })
-
-        return false
-      }
-    },
-    [accountDetails, lotSize, userData],
-  )
-
-  const startTradingSimulation = useCallback(() => {
-    // Clear any existing interval
-    if (tradingInterval) {
-      clearInterval(tradingInterval)
-    }
-
-    // Reset the initial trade flag
-    initialTradeExecuted.current = false
-
-    // Immediately execute a trade for faster feedback
-    setTimeout(async () => {
-      if (isTrading && tradingSymbols.length > 0) {
-        const randomSymbol = tradingSymbols[Math.floor(Math.random() * tradingSymbols.length)]
-
-        // Log the initial analysis
-        const initialLog = `[${getCurrentTime()}] ${randomSymbol}: Starting initial market analysis...`
-        setLogs((prevLogs) => {
-          const newLogs = [...prevLogs, initialLog]
-          localStorage.setItem("tradingLogs", JSON.stringify(newLogs))
-          return newLogs
-        })
-
-        const analysis = await analyzeMarketForSymbol(randomSymbol)
-
-        if (analysis) {
-          // Force a trade for immediate feedback
-          const decisionLog = `[${getCurrentTime()}] ${randomSymbol}: Initial signal detected for ${analysis.recommendation} (Confidence: ${analysis.confidence.toFixed(1)}%)`
-          setLogs((prevLogs) => {
-            const newLogs = [...prevLogs, decisionLog]
-            localStorage.setItem("tradingLogs", JSON.stringify(newLogs))
-            return newLogs
-          })
-
-          await executeTrade(randomSymbol, analysis.recommendation, analysis)
-        }
-      }
-    }, 2000)
-
-    // Set up trading interval (every 30-60 seconds)
-    const interval = setInterval(
-      async () => {
-        // Only proceed if we're still trading
-        if (!isTrading) return
-
-        // Check if we've reached max trades
-        if (maxTrades > 0 && tradeCount.current >= maxTrades) {
-          const maxTradesLog = `[${getCurrentTime()}] Maximum number of trades (${maxTrades}) reached. Trading paused.`
-          setLogs((prevLogs) => {
-            const newLogs = [...prevLogs, maxTradesLog]
-            localStorage.setItem("tradingLogs", JSON.stringify(newLogs))
-            return newLogs
-          })
-
-          // Stop trading
-          setIsTrading(false)
-          localStorage.setItem("isTrading", "false")
-          clearInterval(interval)
-          return
-        }
-
-        // Check if initial trade has been executed
-        if (!initialTradeExecuted.current) {
-          console.log("Initial trade not yet executed, trying again...")
-          const randomSymbol = tradingSymbols[Math.floor(Math.random() * tradingSymbols.length)]
-          const analysis = await analyzeMarketForSymbol(randomSymbol)
-
-          if (analysis) {
-            await executeTrade(randomSymbol, analysis.recommendation, analysis)
-          }
-          return
-        }
-
-        // Randomly select a symbol to trade
-        const randomSymbol = tradingSymbols[Math.floor(Math.random() * tradingSymbols.length)]
-
-        // Analyze the market for this symbol
-        const analysis = await analyzeMarketForSymbol(randomSymbol)
-
-        if (!analysis) {
-          return // Analysis failed
-        }
-
-        // For testing purposes, always execute a trade regardless of confidence
-        const decisionLog = `[${getCurrentTime()}] ${randomSymbol}: Signal detected for ${analysis.recommendation} (Confidence: ${analysis.confidence.toFixed(1)}%)`
-        setLogs((prevLogs) => {
-          const newLogs = [...prevLogs, decisionLog]
-          localStorage.setItem("tradingLogs", JSON.stringify(newLogs))
-          return newLogs
-        })
-
-        // Execute the trade
-        await executeTrade(randomSymbol, analysis.recommendation, analysis)
-      },
-      30000, // Every 30 seconds
-    )
-
-    setTradingInterval(interval)
-  }, [isTrading, tradingSymbols, userData])
-
-  const startTradingInterval = () => {
-    // Clear any existing interval
-    if (tradingInterval) {
-      clearInterval(tradingInterval)
-    }
-
-    // Reset the initial trade flag
-    initialTradeExecuted.current = false
-
-    // Immediately execute a trade for faster feedback
-    setTimeout(async () => {
-      if (isTrading && tradingSymbols.length > 0) {
-        const randomSymbol = tradingSymbols[Math.floor(Math.random() * tradingSymbols.length)]
-
-        // Log the initial analysis
-        const initialLog = `[${getCurrentTime()}] ${randomSymbol}: Starting initial market analysis...`
-        setLogs((prevLogs) => {
-          const newLogs = [...prevLogs, initialLog]
-          localStorage.setItem("tradingLogs", JSON.stringify(newLogs))
-          return newLogs
-        })
-
-        const analysis = await analyzeMarketForSymbol(randomSymbol)
-
-        if (analysis) {
-          // Force a trade for immediate feedback
-          const decisionLog = `[${getCurrentTime()}] ${randomSymbol}: Initial signal detected for ${analysis.recommendation} (Confidence: ${analysis.confidence.toFixed(1)}%)`
-          setLogs((prevLogs) => {
-            const newLogs = [...prevLogs, decisionLog]
-            localStorage.setItem("tradingLogs", JSON.stringify(newLogs))
-            return newLogs
-          })
-
-          await executeTrade(randomSymbol, analysis.recommendation, analysis)
-        }
-      }
-    }, 2000)
-
-    // Set up trading interval (every 30-60 seconds)
-    const interval = setInterval(
-      async () => {
-        // Only proceed if we're still trading
-        if (!isTrading) return
-
-        // Check if we've reached max trades
-        if (maxTrades > 0 && tradeCount.current >= maxTrades) {
-          const maxTradesLog = `[${getCurrentTime()}] Maximum number of trades (${maxTrades}) reached. Trading paused.`
-          setLogs((prevLogs) => {
-            const newLogs = [...prevLogs, maxTradesLog]
-            localStorage.setItem("tradingLogs", JSON.stringify(newLogs))
-            return newLogs
-          })
-
-          // Stop trading
-          setIsTrading(false)
-          localStorage.setItem("isTrading", "false")
-          clearInterval(interval)
-          return
-        }
-
-        // Check if initial trade has been executed
-        if (!initialTradeExecuted.current) {
-          console.log("Initial trade not yet executed, trying again...")
-          const randomSymbol = tradingSymbols[Math.floor(Math.random() * tradingSymbols.length)]
-          const analysis = await analyzeMarketForSymbol(randomSymbol)
-
-          if (analysis) {
-            await executeTrade(randomSymbol, analysis.recommendation, analysis)
-          }
-          return
-        }
-
-        // Randomly select a symbol to trade
-        const randomSymbol = tradingSymbols[Math.floor(Math.random() * tradingSymbols.length)]
-
-        // Analyze the market for this symbol
-        const analysis = await analyzeMarketForSymbol(randomSymbol)
-
-        if (!analysis) {
-          return // Analysis failed
-        }
-
-        // For testing purposes, always execute a trade regardless of confidence
-        const decisionLog = `[${getCurrentTime()}] ${randomSymbol}: Signal detected for ${analysis.recommendation} (Confidence: ${analysis.confidence.toFixed(1)}%)`
-        setLogs((prevLogs) => {
-          const newLogs = [...prevLogs, decisionLog]
-          localStorage.setItem("tradingLogs", JSON.stringify(newLogs))
-          return newLogs
-        })
-
-        // Execute the trade
-        await executeTrade(randomSymbol, analysis.recommendation, analysis)
-      },
-      30000, // Every 30 seconds
-    )
-
-    setTradingInterval(interval)
-  }
 
   const handleToggleTrading = () => {
-    // Prevent multiple clicks
-    setIsButtonDisabled(true)
-
-    setTimeout(() => {
-      setIsButtonDisabled(false)
-    }, 1000)
-
     if (isTrading) {
       // Stop trading
       setIsTrading(false)
@@ -421,28 +95,12 @@ export default function DashboardPage() {
       // Save to localStorage
       localStorage.setItem("isTrading", "false")
       localStorage.setItem("tradingLogs", JSON.stringify(newLogs))
-
-      // Clear trading interval
-      if (tradingInterval) {
-        clearInterval(tradingInterval)
-        setTradingInterval(null)
-      }
     } else {
       // Start trading
-
-      // Check if trading account is connected
-      if (!accountDetails || !accountDetails.accountId) {
-        toast({
-          title: "Trading account not connected",
-          description: "Please connect your trading account first",
-          variant: "destructive",
-        })
-        router.push("/dashboard/connect")
-        return
-      }
+      setIsTrading(true)
 
       // Check if user has added symbols
-      if (!tradingSymbols || tradingSymbols.length === 0) {
+      if (tradingSymbols.length === 0) {
         toast({
           title: "No trading symbols",
           description: "Please add trading symbols in the Settings page",
@@ -455,45 +113,28 @@ export default function DashboardPage() {
         ]
         setLogs(newLogs)
         localStorage.setItem("tradingLogs", JSON.stringify(newLogs))
-        router.push("/dashboard/settings")
         return
       }
 
-      // Reset trade count
-      tradeCount.current = 0
-
-      setIsTrading(true)
-
-      // Reset logs when starting trading
+      // Reset logs and trade tracking when starting trading
       const symbolsList = tradingSymbols.join(", ")
-      const initialLogs = [`[${getCurrentTime()}] Trading started`]
-      setLogs(initialLogs)
+      const newLogs = [
+        `[${getCurrentTime()}] Trading started`,
+        `[${getCurrentTime()}] Trading symbols: ${symbolsList}`,
+        `[${getCurrentTime()}] Initializing trading algorithms...`,
+      ]
+      setLogs(newLogs)
+
+      // Reset current trades count and direction
+      const trades = {}
+      tradingSymbols.forEach((symbol) => {
+        trades[symbol] = { count: 0, direction: null }
+      })
+      setCurrentTrades(trades)
 
       // Save to localStorage
       localStorage.setItem("isTrading", "true")
-      localStorage.setItem("tradingLogs", JSON.stringify(initialLogs))
-
-      // Add logs with delays
-      setTimeout(() => {
-        const updatedLogs = [...initialLogs, `[${getCurrentTime()}] Trading symbols: ${symbolsList}`]
-        setLogs(updatedLogs)
-        localStorage.setItem("tradingLogs", JSON.stringify(updatedLogs))
-
-        setTimeout(() => {
-          const updatedLogs2 = [
-            ...updatedLogs,
-            `[${getCurrentTime()}] Initializing trading algorithms...`,
-            `[${getCurrentTime()}] Connected to trading account: ${accountDetails.login}`,
-            `[${getCurrentTime()}] Stop Loss and Take Profit will be calculated automatically based on market analysis`,
-            `[${getCurrentTime()}] Comment format: ${COMMENT_PREFIX}~${userData?.robotName || "QUICKTRADE PRO OFFICIAL"}`,
-          ]
-          setLogs(updatedLogs2)
-          localStorage.setItem("tradingLogs", JSON.stringify(updatedLogs2))
-
-          // Start trading interval
-          startTradingSimulation()
-        }, 5000)
-      }, 5000)
+      localStorage.setItem("tradingLogs", JSON.stringify(newLogs))
     }
   }
 
@@ -535,6 +176,152 @@ export default function DashboardPage() {
     return now.toTimeString().split(" ")[0]
   }
 
+  // Generate random price levels for SL and TP based on symbol and trade type
+  const generatePriceLevels = (symbol, tradeType) => {
+    // Base price - this would normally come from market data
+    let basePrice = 0
+
+    // Set different base prices for different symbols
+    if (symbol.includes("BTC")) {
+      basePrice = 65000 + Math.random() * 5000
+    } else if (symbol.includes("EUR")) {
+      basePrice = 1.08 + Math.random() * 0.02
+    } else if (symbol.includes("GBP")) {
+      basePrice = 1.26 + Math.random() * 0.02
+    } else if (symbol.includes("JPY")) {
+      basePrice = 150 + Math.random() * 5
+    } else if (symbol.includes("XAU")) {
+      basePrice = 2300 + Math.random() * 50
+    } else {
+      basePrice = 100 + Math.random() * 10 // Default for other symbols
+    }
+
+    // Calculate SL and TP based on trade type
+    let stopLoss, takeProfit
+
+    if (tradeType === "BUY") {
+      // For BUY: SL below current price, TP above current price
+      stopLoss = basePrice * 0.99 // 1% below
+      takeProfit = basePrice * 1.02 // 2% above
+    } else {
+      // For SELL: SL above current price, TP below current price
+      stopLoss = basePrice * 1.01 // 1% above
+      takeProfit = basePrice * 0.98 // 2% below
+    }
+
+    return {
+      price: basePrice.toFixed(2),
+      stopLoss: stopLoss.toFixed(2),
+      takeProfit: takeProfit.toFixed(2),
+    }
+  }
+
+  useEffect(() => {
+    if (isTrading && tradingSymbols.length > 0) {
+      const tradingActions = [
+        "Checking market conditions",
+        "Analyzing price patterns",
+        "Scanning for entry points",
+        "Monitoring open positions",
+        "Calculating risk parameters",
+        "Executing trade strategy",
+        "Adjusting stop loss levels",
+        "Verifying signal strength",
+        "Bot action performed",
+      ]
+
+      const interval = setInterval(async () => {
+        // Randomly select a symbol to trade
+        const randomSymbol = tradingSymbols[Math.floor(Math.random() * tradingSymbols.length)]
+
+        // Randomly select an action
+        const randomAction = tradingActions[Math.floor(Math.random() * tradingActions.length)]
+
+        // Create log entry with symbol
+        const newLog = `[${getCurrentTime()}] ${randomSymbol}: ${randomAction}`
+        let updatedLogs = [...logs, newLog]
+
+        // Occasionally execute a real trade (approximately 20% chance)
+        if (
+          accountId &&
+          (randomAction === "Scanning for entry points" || randomAction === "Bot action performed") &&
+          Math.random() < 0.2
+        ) {
+          try {
+            // Get the user's configured lot size
+            const currentLotSize = lotSize || "0.01"
+
+            // Randomly decide if it's a buy or sell
+            const tradeType = Math.random() > 0.5 ? "BUY" : "SELL"
+
+            // Execute the trade
+            const tradeLog = `[${getCurrentTime()}] ${randomSymbol}: EXECUTING ${tradeType} ORDER...`
+            updatedLogs = [...updatedLogs, tradeLog]
+
+            // Generate a comment for the trade - use Latin-1 compatible characters only
+            const robotName = userData?.robotName || "QUICKTRADE PRO"
+            const tradeComment = `${robotName} +` // Using "+" instead of checkmark emoji
+
+            // Generate price levels for SL and TP
+            // const priceLevels = generatePriceLevels(randomSymbol, tradeType)
+
+            // Call the API to execute the trade with retry logic
+            const executeTradeWithRetry = async (retries = 3) => {
+              try {
+                const response = await fetch("/api/metaapi/trade", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    accountId,
+                    symbol: randomSymbol,
+                    type: tradeType, // This is either "BUY" or "SELL"
+                    volume: Number.parseFloat(currentLotSize),
+                    comment: tradeComment,
+                  }),
+                })
+
+                const result = await response.json()
+
+                if (result.success) {
+                  const successLog = `[${getCurrentTime()}] ${randomSymbol}: ${tradeType} ORDER EXECUTED SUCCESSFULLY!`
+                  updatedLogs = [...updatedLogs, successLog]
+                  setLastTradeSuccess(true)
+                } else {
+                  throw new Error(result.error || "Unknown error")
+                }
+              } catch (error) {
+                if (retries > 0) {
+                  const retryLog = `[${getCurrentTime()}] ${randomSymbol}: Retrying trade execution (${retries} attempts left)...`
+                  updatedLogs = [...updatedLogs, retryLog]
+                  return executeTradeWithRetry(retries - 1)
+                } else {
+                  const errorLog = `[${getCurrentTime()}] ${randomSymbol}: TRADE ERROR - ${error instanceof Error ? error.message : "Unknown error"}`
+                  updatedLogs = [...updatedLogs, errorLog]
+                  setLastTradeSuccess(false)
+                }
+              }
+            }
+
+            await executeTradeWithRetry()
+          } catch (error) {
+            const errorLog = `[${getCurrentTime()}] ${randomSymbol}: TRADE EXECUTION FAILED - ${error instanceof Error ? error.message : "Unknown error"}`
+            updatedLogs = [...updatedLogs, errorLog]
+            setLastTradeSuccess(false)
+          }
+        }
+
+        setLogs(updatedLogs)
+
+        // Save logs to localStorage
+        localStorage.setItem("tradingLogs", JSON.stringify(updatedLogs))
+      }, 2000) // 2 seconds interval
+
+      return () => clearInterval(interval)
+    }
+  }, [isTrading, logs, tradingSymbols, accountId, lotSize, userData, currentTrades, maxTrades])
+
   const toggleLogs = () => {
     const newState = !showLogs
     setShowLogs(newState)
@@ -544,7 +331,13 @@ export default function DashboardPage() {
   return (
     <div className="flex flex-col h-screen bg-slate-900 overflow-hidden">
       <div className="flex justify-between items-start p-4">
-        <Image src="/images/bull-logo.png" alt="QUICKTRADE PRO Logo" width={50} height={50} priority />
+        <Image
+          src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/304fc277-f835-46c7-ba23-d07c855074f2_20250303_233002_0000-47xeYJouFgkAhOYeLZmL50aOqv5JfW.png"
+          alt="QUICKTRADE PRO Logo"
+          width={50}
+          height={50}
+          priority
+        />
         <Button variant="ghost" size="icon" onClick={handleLogout} className="text-white">
           <LogOut size={24} />
         </Button>
@@ -561,41 +354,28 @@ export default function DashboardPage() {
               className="w-full"
             />
           ) : (
-            <Image src="/images/bull-logo.png" alt="Default Profile" width={300} height={300} className="w-full" />
+            <Image
+              src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/304fc277-f835-46c7-ba23-d07c855074f2_20250303_233002_0000-47xeYJouFgkAhOYeLZmL50aOqv5JfW.png"
+              alt="Default Profile"
+              width={300}
+              height={300}
+              className="w-full"
+            />
           )}
         </div>
 
         <div className="w-full max-w-md text-center mb-4">
-          <h1 className="text-3xl font-bold text-white">{userData?.robotName || "QUICKTRADE PRO"}</h1>
+          <div className="flex items-center justify-center">
+            <h1 className="text-3xl font-bold text-white mr-2">{userData?.robotName || "QUICKTRADE PRO"}</h1>
+            {lastTradeSuccess !== null &&
+              (lastTradeSuccess ? (
+                <CheckCircle className="h-6 w-6 text-green-500" />
+              ) : (
+                <XCircle className="h-6 w-6 text-red-500" />
+              ))}
+          </div>
           <p className="text-gray-400 mt-2">{userData?.eaName || "Elite precision, 24/7 operation"}</p>
         </div>
-
-        {/* Market Analysis Alert */}
-        {marketAnalysis && (
-          <div className="w-full max-w-md bg-blue-900/30 rounded-lg p-4 mb-4 border border-blue-500/50">
-            <div className="flex items-center mb-2">
-              <AlertTriangle className="text-blue-400 mr-2" size={18} />
-              <h2 className="text-blue-300 text-lg font-medium">Market Analysis</h2>
-            </div>
-            <div className="text-sm text-blue-200">
-              <p>
-                <span className="font-semibold">Symbol:</span> {marketAnalysis.symbol}
-              </p>
-              <p>
-                <span className="font-semibold">Trend:</span> {marketAnalysis.trend}
-              </p>
-              <p>
-                <span className="font-semibold">Strength:</span> {marketAnalysis.strength.toFixed(1)}%
-              </p>
-              <p>
-                <span className="font-semibold">Recommendation:</span> {marketAnalysis.recommendation}
-              </p>
-              <p>
-                <span className="font-semibold">Confidence:</span> {marketAnalysis.confidence.toFixed(1)}%
-              </p>
-            </div>
-          </div>
-        )}
 
         {/* Bot Logs Section with toggle */}
         <div className="w-full max-w-md bg-slate-800 rounded-lg p-4 mb-4">
@@ -611,16 +391,7 @@ export default function DashboardPage() {
               {logs.length > 0 ? (
                 <div className="font-mono text-sm space-y-1">
                   {logs.map((log, index) => (
-                    <div
-                      key={index}
-                      className={`${
-                        log.includes("ERROR") || log.includes("failed") || log.includes("WARNING")
-                          ? "text-red-400"
-                          : log.includes("Order executed")
-                            ? "text-blue-400"
-                            : "text-green-500"
-                      }`}
-                    >
+                    <div key={index} className="text-green-500">
                       {log}
                     </div>
                   ))}
@@ -638,7 +409,6 @@ export default function DashboardPage() {
           <Button
             className={`flex-1 ${isTrading ? "bg-red-500 hover:bg-red-600" : "bg-blue-500 hover:bg-blue-600"} text-white`}
             onClick={handleToggleTrading}
-            disabled={isButtonDisabled}
           >
             {isTrading ? (
               <>

@@ -95,6 +95,7 @@ export async function POST(request: NextRequest) {
                 isActivated: true,
                 deviceId: currentDeviceId,
                 activationDate: new Date(),
+                status: "used", // Mark as used immediately
               },
             },
           )

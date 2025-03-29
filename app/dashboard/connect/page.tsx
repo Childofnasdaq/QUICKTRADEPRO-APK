@@ -6,115 +6,73 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { User, Lock, Server, LinkIcon } from "lucide-react"
 import ConnectSuccess from "@/components/connect-success"
-import PaymentModal from "@/components/payment-modal"
 import Image from "next/image"
 import { toast } from "@/hooks/use-toast"
-import { useRouter, useSearchParams } from "next/navigation"
-import { PaymentPlan } from "@/lib/yoco-payment-client"
+import type { UserData } from "@/lib/auth"
 
 export default function ConnectPage() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
   const [isConnected, setIsConnected] = useState(false)
-  const [platform, setPlatform] = useState<"MT5" | "MT4">("MT5")
+  const [platform, setPlatform] = useState<"mt5" | "mt4">("mt5")
   const [login, setLogin] = useState("")
   const [password, setPassword] = useState("")
   const [server, setServer] = useState("")
   const [isConnecting, setIsConnecting] = useState(false)
   const [accountId, setAccountId] = useState("")
-  const [metaApiAccountId, setMetaApiAccountId] = useState("")
-  const [connectionStatus, setConnectionStatus] = useState("")
   const [connectionError, setConnectionError] = useState("")
-  const [showPaymentModal, setShowPaymentModal] = useState(false)
-  const [userData, setUserData] = useState<any>(null)
-  const [currentPlan, setCurrentPlan] = useState<PaymentPlan>(PaymentPlan.SINGLE_ACCOUNT)
+  const [userData, setUserData] = useState<UserData | null>(null)
 
   // Load saved connection details if available
   useEffect(() => {
-    // Check if we're coming back from the success page to edit details
-    const editMode = searchParams.get("edit") === "true"
+    const savedDetails = localStorage.getItem("metatraderDetails")
+    if (savedDetails) {
+      const details = JSON.parse(savedDetails)
+      setLogin(details.login || "")
+      setServer(details.server || "")
+      setPlatform(details.platform || "mt5")
+
+      // Check if already connected
+      if (details.accountId) {
+        setAccountId(details.accountId)
+        setIsConnected(true)
+      }
+    }
 
     // Get user data
     const storedUserData = localStorage.getItem("userData")
     if (storedUserData) {
-      const parsedUserData = JSON.parse(storedUserData)
-      setUserData(parsedUserData)
+      setUserData(JSON.parse(storedUserData))
     }
-
-    // Get user subscription
-    const fetchUserSubscription = async () => {
-      if (userData?.uid) {
-        try {
-          const response = await fetch(`/api/user/${userData.uid}/subscription`)
-          if (response.ok) {
-            const data = await response.json()
-            if (data.plan) {
-              setCurrentPlan(data.plan)
-            }
-          }
-        } catch (error) {
-          console.error("Error fetching subscription:", error)
-        }
-      }
-    }
-
-    fetchUserSubscription()
-
-    const savedDetails = localStorage.getItem("tradingAccountDetails")
-    if (savedDetails && !editMode) {
-      const details = JSON.parse(savedDetails)
-      setLogin(details.login || "")
-      setServer(details.server || "")
-      setPlatform(details.platform || "MT5")
-
-      // Check if already connected
-      if (details.accountId && details.connectionStatus === "CONNECTED") {
-        setAccountId(details.accountId)
-        setMetaApiAccountId(details.metaApiAccountId || "")
-        setConnectionStatus(details.connectionStatus)
-        setIsConnected(true)
-      }
-    }
-  }, [searchParams, userData?.uid])
+  }, [])
 
   const handleConnect = async () => {
     if (!login || !password || !server) {
-      toast({
-        title: "Missing information",
-        description: "Please fill in all fields",
-        variant: "destructive",
-      })
+      setConnectionError("Please fill in all fields")
       return
     }
 
-    setIsConnecting(true)
     setConnectionError("")
+    setIsConnecting(true)
 
     try {
-      // Call the API to connect to trading account
-      const response = await fetch("/api/connect-account", {
+      // Connect to MetaAPI
+      const response = await fetch("/api/metaapi/connect", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ login, password, server, platform }),
+        body: JSON.stringify({
+          login,
+          password,
+          server,
+          platform,
+          mentorId: userData?.mentorId || "unknown",
+        }),
       })
 
       const data = await response.json()
 
       if (!response.ok) {
-        // Check if account limit reached
-        if (response.status === 403 && data.requiresUpgrade) {
-          setCurrentPlan(data.currentPlan)
-          setShowPaymentModal(true)
-          return
-        }
-
-        throw new Error(data.error || "Failed to connect to your trading account")
-      }
-
-      if (!data.success) {
-        throw new Error(data.error || "Failed to connect to your trading account")
+        throw new Error(data.error || "Failed to connect to MetaTrader account")
       }
 
       // Save connection details
@@ -123,28 +81,27 @@ export default function ConnectPage() {
         server,
         platform,
         accountId: data.accountId,
-        metaApiAccountId: data.metaApiAccountId,
-        connectionStatus: data.connectionStatus,
+        isConnected: true,
+        connectedAt: new Date().toISOString(),
       }
 
-      localStorage.setItem("tradingAccountDetails", JSON.stringify(connectionDetails))
-
-      // Update state
+      localStorage.setItem("metatraderDetails", JSON.stringify(connectionDetails))
       setAccountId(data.accountId)
-      setMetaApiAccountId(data.metaApiAccountId)
-      setConnectionStatus(data.connectionStatus)
       setIsConnected(true)
 
       toast({
         title: "Connection successful",
-        description: "Your trading account is now connected!",
+        description: data.isNewAccount
+          ? "Your MetaTrader account has been created and connected successfully"
+          : "Connected to your existing MetaTrader account",
       })
     } catch (error) {
       console.error("Connection error:", error)
-      setConnectionError(error instanceof Error ? error.message : "Failed to connect to your trading account")
+      setConnectionError(error instanceof Error ? error.message : "Failed to connect to MetaTrader account")
+
       toast({
         title: "Connection failed",
-        description: error instanceof Error ? error.message : "Failed to connect to your trading account",
+        description: error instanceof Error ? error.message : "Failed to connect to MetaTrader account",
         variant: "destructive",
       })
     } finally {
@@ -152,49 +109,45 @@ export default function ConnectPage() {
     }
   }
 
-  const handlePaymentSuccess = (plan: PaymentPlan) => {
-    setShowPaymentModal(false)
-    setCurrentPlan(plan)
-
-    // Try connecting again after successful payment
-    handleConnect()
-  }
-
   if (isConnected) {
-    return (
-      <ConnectSuccess
-        login={login}
-        server={server}
-        platform={platform}
-        accountId={accountId}
-        metaApiAccountId={metaApiAccountId}
-      />
-    )
+    return <ConnectSuccess login={login} server={server} platform={platform} accountId={accountId} />
   }
 
   return (
     <div className="p-4 pb-20">
       <div className="flex justify-center mb-4">
-        <Image src="/images/bull-logo.png" alt="QUICKTRADE PRO Logo" width={60} height={60} priority />
+        <Image
+          src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/304fc277-f835-46c7-ba23-d07c855074f2_20250303_233002_0000-47xeYJouFgkAhOYeLZmL50aOqv5JfW.png"
+          alt="QUICKTRADE PRO Logo"
+          width={60}
+          height={60}
+          priority
+        />
       </div>
 
       <Card className="mx-auto max-w-md">
         <CardHeader>
-          <CardTitle className="text-xl text-center">Connect Trading Account</CardTitle>
+          <CardTitle className="text-xl text-center">Connect MetaTrader Account</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {connectionError && (
+            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative dark:bg-red-900 dark:text-red-300 dark:border-red-800">
+              <span className="block sm:inline">{connectionError}</span>
+            </div>
+          )}
+
           <div className="text-center mb-4">
             <p className="text-sm text-muted-foreground">Select Platform:</p>
             <div className="flex mt-2 space-x-2">
               <Button
-                className={`flex-1 ${platform === "MT5" ? "bg-blue-500" : "bg-transparent border border-gray-300"}`}
-                onClick={() => setPlatform("MT5")}
+                className={`flex-1 ${platform === "mt5" ? "bg-blue-500" : "bg-transparent border border-gray-300"}`}
+                onClick={() => setPlatform("mt5")}
               >
                 MT5
               </Button>
               <Button
-                className={`flex-1 ${platform === "MT4" ? "bg-blue-500" : "bg-transparent border border-gray-300"}`}
-                onClick={() => setPlatform("MT4")}
+                className={`flex-1 ${platform === "mt4" ? "bg-blue-500" : "bg-transparent border border-gray-300"}`}
+                onClick={() => setPlatform("mt4")}
               >
                 MT4
               </Button>
@@ -232,10 +185,6 @@ export default function ConnectPage() {
             />
           </div>
 
-          {connectionError && (
-            <div className="text-red-500 text-sm p-2 bg-red-50 dark:bg-red-900/20 rounded-md">{connectionError}</div>
-          )}
-
           <Button
             className="w-full bg-blue-500 hover:bg-blue-600"
             onClick={handleConnect}
@@ -254,15 +203,6 @@ export default function ConnectPage() {
           </Button>
         </CardContent>
       </Card>
-
-      {/* Payment Modal */}
-      <PaymentModal
-        isOpen={showPaymentModal}
-        onClose={() => setShowPaymentModal(false)}
-        onSuccess={handlePaymentSuccess}
-        userId={userData?.uid || "guest"}
-        currentPlan={currentPlan}
-      />
     </div>
   )
 }

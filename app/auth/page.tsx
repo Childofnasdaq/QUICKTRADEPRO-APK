@@ -67,7 +67,7 @@ export default function AuthPage() {
         <CardContent className="pt-6">
           <div className="flex flex-col items-center space-y-6">
             <Image
-              src="/images/bull-logo.png"
+              src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/304fc277-f835-46c7-ba23-d07c855074f2_20250303_233002_0000-47xeYJouFgkAhOYeLZmL50aOqv5JfW.png"
               alt="QUICKTRADE PRO Logo"
               width={120}
               height={120}

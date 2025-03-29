@@ -19,6 +19,7 @@ export default function SettingsPage() {
   const [maxTrades, setMaxTrades] = useState("0")
   const [isSaving, setIsSaving] = useState(false)
   const [showExpiryWarning, setShowExpiryWarning] = useState(false)
+  const [isConnected, setIsConnected] = useState(false)
 
   useEffect(() => {
     // Get user data from localStorage
@@ -55,6 +56,15 @@ export default function SettingsPage() {
     const savedMaxTrades = localStorage.getItem("maxTrades")
     if (savedMaxTrades) {
       setMaxTrades(savedMaxTrades)
+    }
+
+    // Check if MetaTrader account is connected
+    const metatraderDetails = localStorage.getItem("metatraderDetails")
+    if (metatraderDetails) {
+      const details = JSON.parse(metatraderDetails)
+      if (details.isConnected) {
+        setIsConnected(true)
+      }
     }
   }, [])
 
@@ -99,6 +109,12 @@ export default function SettingsPage() {
     setIsSaving(true)
 
     try {
+      // Validate lot size (ensure it's a valid number)
+      const lotSizeNum = Number.parseFloat(lotSize)
+      if (isNaN(lotSizeNum) || lotSizeNum <= 0) {
+        throw new Error("Lot size must be a positive number")
+      }
+
       // Save all settings to localStorage
       localStorage.setItem("tradingSymbols", JSON.stringify(symbols))
       localStorage.setItem("lotSize", lotSize)
@@ -115,7 +131,7 @@ export default function SettingsPage() {
       console.error("Failed to save settings:", error)
       toast({
         title: "Error",
-        description: "Failed to save settings. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to save settings. Please try again.",
         variant: "destructive",
       })
     } finally {
@@ -136,7 +152,7 @@ export default function SettingsPage() {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center">
           <Image
-            src="/images/bull-logo.png"
+            src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/304fc277-f835-46c7-ba23-d07c855074f2_20250303_233002_0000-47xeYJouFgkAhOYeLZmL50aOqv5JfW.png"
             alt="QUICKTRADE PRO Logo"
             width={30}
             height={30}
@@ -168,8 +184,10 @@ export default function SettingsPage() {
               <h2 className="font-medium">Connection Status</h2>
             </div>
             <div className="mt-2 flex items-center">
-              <div className="h-5 w-5 rounded-full bg-green-500 mr-2"></div>
-              <span className="text-green-500">active</span>
+              <div className={`h-5 w-5 rounded-full ${isConnected ? "bg-green-500" : "bg-red-500"} mr-2`}></div>
+              <span className={isConnected ? "text-green-500" : "text-red-500"}>
+                {isConnected ? "active" : "not connected"}
+              </span>
             </div>
           </CardContent>
         </Card>
@@ -272,13 +290,13 @@ export default function SettingsPage() {
               <h2 className="font-medium">Available Symbols</h2>
             </div>
             <div className="mt-2 space-y-2">
-              {/* Only show symbols that the user has added */}
+              {/* Show symbols that the user has added with their chosen lot size */}
               {symbols.length > 0 ? (
                 symbols.map((symbol, index) => (
                   <div key={index} className="bg-gray-100 dark:bg-slate-800 p-2 rounded-md">
                     <div className="flex justify-between items-center">
                       <span>{symbol}</span>
-                      <span className="text-xs text-muted-foreground">Min: 0.01</span>
+                      <span className="text-xs text-muted-foreground">Lot Size: {lotSize}</span>
                     </div>
                   </div>
                 ))

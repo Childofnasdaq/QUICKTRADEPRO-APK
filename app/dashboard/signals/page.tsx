@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ArrowUpRight, ArrowDownRight, Clock } from "lucide-react"
 import Image from "next/image"
+import { toast } from "@/hooks/use-toast"
 
 export default function SignalsPage() {
   const [signals, setSignals] = useState([
@@ -63,13 +64,23 @@ export default function SignalsPage() {
 
   const [filteredSignals, setFilteredSignals] = useState([])
   const [userSymbols, setUserSymbols] = useState<string[]>([])
+  const [accountId, setAccountId] = useState<string | null>(null)
+  const [isExecutingTrade, setIsExecutingTrade] = useState<string | null>(null)
+  const [symbolTradeDirections, setSymbolTradeDirections] = useState<{ [symbol: string]: string | null }>({})
 
-  // Load user's trading symbols
+  // Load user's trading symbols and account ID
   useEffect(() => {
     const savedSymbols = localStorage.getItem("tradingSymbols")
     if (savedSymbols) {
       const parsedSymbols = JSON.parse(savedSymbols)
       setUserSymbols(parsedSymbols)
+
+      // Initialize trade directions
+      const directions = {}
+      parsedSymbols.forEach((symbol) => {
+        directions[symbol] = null
+      })
+      setSymbolTradeDirections(directions)
 
       // If user has selected symbols, filter signals to only show those symbols
       if (parsedSymbols.length > 0) {
@@ -83,7 +94,111 @@ export default function SignalsPage() {
       // If no symbols saved, show all signals
       setFilteredSignals(signals)
     }
+
+    // Get MetaAPI account ID
+    const metatraderDetails = localStorage.getItem("metatraderDetails")
+    if (metatraderDetails) {
+      const details = JSON.parse(metatraderDetails)
+      if (details.accountId) {
+        setAccountId(details.accountId)
+      }
+    }
   }, [signals])
+
+  const handleCopyTrade = async (signal) => {
+    if (!accountId) {
+      toast({
+        title: "No account connected",
+        description: "Please connect your MetaTrader account first",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Check if we already have trades in the opposite direction
+    const currentDirection = symbolTradeDirections[signal.symbol]
+    if (currentDirection && currentDirection !== signal.type) {
+      toast({
+        title: "Direction conflict",
+        description: `You already have ${currentDirection} trades for ${signal.symbol}. Cannot execute ${signal.type} trade.`,
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsExecutingTrade(signal.symbol)
+
+    // Retry function with 3 attempts
+    const executeTradeWithRetry = async (retries = 3) => {
+      try {
+        // Get lot size from settings
+        const lotSize = localStorage.getItem("lotSize") || "0.01"
+
+        // Generate a comment for the trade - use Latin-1 compatible characters only
+        const robotName = localStorage.getItem("userData")
+          ? JSON.parse(localStorage.getItem("userData")).robotName || "QUICKTRADE PRO"
+          : "QUICKTRADE PRO"
+        const tradeComment = `${robotName} +` // Using "+" instead of checkmark emoji
+
+        // Execute trade via MetaAPI
+        const response = await fetch("/api/metaapi/trade", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            accountId,
+            symbol: signal.symbol,
+            type: signal.type, // BUY or SELL
+            volume: Number.parseFloat(lotSize),
+            stopLoss: Number.parseFloat(signal.sl),
+            takeProfit: Number.parseFloat(signal.tp),
+            comment: tradeComment,
+          }),
+        })
+
+        const data = await response.json()
+
+        if (!response.ok) {
+          throw new Error(data.error || "Failed to execute trade")
+        }
+
+        // Update the trade direction for this symbol
+        setSymbolTradeDirections((prev) => ({
+          ...prev,
+          [signal.symbol]: signal.type,
+        }))
+
+        toast({
+          title: "Trade executed",
+          description: `${signal.type} ${signal.symbol} at ${signal.price} with SL: ${signal.sl}, TP: ${signal.tp}`,
+        })
+
+        return true
+      } catch (error) {
+        console.error("Trade execution error:", error)
+
+        if (retries > 0) {
+          console.log(`Retrying trade execution, ${retries} attempts left`)
+          return executeTradeWithRetry(retries - 1)
+        }
+
+        toast({
+          title: "Trade failed",
+          description: error instanceof Error ? error.message : "Failed to execute trade",
+          variant: "destructive",
+        })
+
+        return false
+      }
+    }
+
+    try {
+      await executeTradeWithRetry()
+    } finally {
+      setIsExecutingTrade(null)
+    }
+  }
 
   return (
     <div className="p-4 pb-20">
@@ -149,8 +264,25 @@ export default function SignalsPage() {
                 </div>
 
                 {signal.active && (
-                  <Button className="w-full mt-3 bg-blue-500 hover:bg-blue-600" size="sm">
-                    Copy Trade
+                  <Button
+                    className="w-full mt-3 bg-blue-500 hover:bg-blue-600"
+                    size="sm"
+                    onClick={() => handleCopyTrade(signal)}
+                    disabled={
+                      isExecutingTrade === signal.symbol ||
+                      (symbolTradeDirections[signal.symbol] && symbolTradeDirections[signal.symbol] !== signal.type)
+                    }
+                  >
+                    {isExecutingTrade === signal.symbol ? (
+                      <>
+                        <div className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                        Executing...
+                      </>
+                    ) : symbolTradeDirections[signal.symbol] && symbolTradeDirections[signal.symbol] !== signal.type ? (
+                      `Conflicts with existing ${symbolTradeDirections[signal.symbol]} trades`
+                    ) : (
+                      "Copy Trade"
+                    )}
                   </Button>
                 )}
               </CardContent>
