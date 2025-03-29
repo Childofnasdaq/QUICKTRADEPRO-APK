@@ -20,6 +20,7 @@ export default function ConnectPage() {
   const [accountId, setAccountId] = useState("")
   const [connectionError, setConnectionError] = useState("")
   const [userData, setUserData] = useState<UserData | null>(null)
+  const [isCheckingExistingAccount, setIsCheckingExistingAccount] = useState(true)
 
   // Load saved connection details if available
   useEffect(() => {
@@ -34,15 +35,63 @@ export default function ConnectPage() {
       if (details.accountId) {
         setAccountId(details.accountId)
         setIsConnected(true)
+        setIsCheckingExistingAccount(false)
       }
     }
 
     // Get user data
     const storedUserData = localStorage.getItem("userData")
     if (storedUserData) {
-      setUserData(JSON.parse(storedUserData))
+      const parsedUserData = JSON.parse(storedUserData)
+      setUserData(parsedUserData)
+
+      // Check if user already has a MetaAPI account from auth
+      if (parsedUserData.metaApiAccountId) {
+        checkExistingMetaApiAccount(parsedUserData.metaApiAccountId)
+      } else {
+        setIsCheckingExistingAccount(false)
+      }
+    } else {
+      setIsCheckingExistingAccount(false)
     }
   }, [])
+
+  // Check if the user already has a MetaAPI account
+  const checkExistingMetaApiAccount = async (accountId: string) => {
+    try {
+      // Fetch account details from MetaAPI
+      const response = await fetch(`/api/metaapi/account-details?accountId=${accountId}`)
+      const data = await response.json()
+
+      if (data.success && data.account) {
+        // Account exists, auto-connect
+        const connectionDetails = {
+          login: data.account.login || "",
+          server: data.account.server || "",
+          platform: data.account.platform || "mt5",
+          accountId: accountId,
+          isConnected: true,
+          connectedAt: new Date().toISOString(),
+        }
+
+        localStorage.setItem("metatraderDetails", JSON.stringify(connectionDetails))
+        setLogin(connectionDetails.login)
+        setServer(connectionDetails.server)
+        setPlatform(connectionDetails.platform as "mt5" | "mt4")
+        setAccountId(accountId)
+        setIsConnected(true)
+
+        toast({
+          title: "Account auto-connected",
+          description: "Your existing MetaTrader account has been automatically connected",
+        })
+      }
+    } catch (error) {
+      console.error("Error checking existing MetaAPI account:", error)
+    } finally {
+      setIsCheckingExistingAccount(false)
+    }
+  }
 
   const handleConnect = async () => {
     if (!login || !password || !server) {
@@ -66,6 +115,8 @@ export default function ConnectPage() {
           server,
           platform,
           mentorId: userData?.mentorId || "unknown",
+          email: userData?.email || "unknown",
+          userId: userData?.uid || "unknown",
         }),
       })
 
@@ -107,6 +158,15 @@ export default function ConnectPage() {
     } finally {
       setIsConnecting(false)
     }
+  }
+
+  if (isCheckingExistingAccount) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+        <span className="ml-2">Checking for existing accounts...</span>
+      </div>
+    )
   }
 
   if (isConnected) {
@@ -206,4 +266,3 @@ export default function ConnectPage() {
     </div>
   )
 }
-
