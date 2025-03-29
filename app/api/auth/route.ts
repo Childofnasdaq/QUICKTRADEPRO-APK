@@ -1,6 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
 import clientPromise from "@/lib/mongodb"
 import { v4 as uuidv4 } from "uuid"
+import axios from "axios"
+import https from "https"
+import { ENDPOINTS, METAAPI_TOKEN } from "@/lib/metaapi"
 
 export async function POST(request: NextRequest) {
   try {
@@ -120,7 +123,62 @@ export async function POST(request: NextRequest) {
         daysUntilExpiry = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
       }
 
-      // Return user data
+      // Check if user already has a MetaAPI account
+      let metaApiAccount = null
+      if (collectionNames.includes("metaApiAccounts")) {
+        const metaApiAccountsCollection = db.collection("metaApiAccounts")
+        metaApiAccount = await metaApiAccountsCollection.findOne({
+          userId: user._id.toString(),
+        })
+      }
+
+      // If no MetaAPI account is found in our database, check MetaAPI directly
+      let existingMetaApiAccountId = null
+      if (metaApiAccount) {
+        existingMetaApiAccountId = metaApiAccount.accountId
+      } else {
+        try {
+          // Create a custom HTTPS agent that ignores certificate errors
+          const httpsAgent = new https.Agent({
+            rejectUnauthorized: false,
+          })
+
+          // Check if account exists in MetaAPI
+          const accountsResponse = await axios.get(ENDPOINTS.PROVISIONING.ACCOUNTS, {
+            headers: { "auth-token": METAAPI_TOKEN },
+            httpsAgent,
+          })
+
+          // Look for an account with this user's information
+          // This is a simplified example - you would need to determine how to match accounts
+          // Perhaps by using a naming convention that includes mentorId or email
+          const existingAccount = accountsResponse.data.find(
+            (acc) => acc.name && (acc.name.includes(mentorIdValue) || acc.name.includes(email)),
+          )
+
+          if (existingAccount) {
+            existingMetaApiAccountId = existingAccount.id
+
+            // Store this account reference in our database for future use
+            if (collectionNames.includes("metaApiAccounts")) {
+              const metaApiAccountsCollection = db.collection("metaApiAccounts")
+              await metaApiAccountsCollection.insertOne({
+                userId: user._id.toString(),
+                mentorId: mentorIdValue,
+                email: email,
+                accountId: existingAccount.id,
+                createdAt: new Date(),
+                lastAccessed: new Date(),
+              })
+            }
+          }
+        } catch (error) {
+          console.error("Error checking MetaAPI accounts:", error)
+          // Continue without MetaAPI account info if there's an error
+        }
+      }
+
+      // Return user data with MetaAPI account info if available
       return NextResponse.json({
         success: true,
         user: {
@@ -138,6 +196,7 @@ export async function POST(request: NextRequest) {
           displayName: user.displayName || user.name,
           deviceId: currentDeviceId,
           database: dbName,
+          metaApiAccountId: existingMetaApiAccountId, // Include MetaAPI account ID if available
         },
       })
     }
@@ -152,4 +211,3 @@ export async function POST(request: NextRequest) {
     )
   }
 }
-
