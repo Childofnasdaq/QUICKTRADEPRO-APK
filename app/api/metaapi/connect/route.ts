@@ -6,7 +6,7 @@ import { ENDPOINTS, METAAPI_TOKEN } from "@/lib/metaapi"
 
 export async function POST(request: NextRequest) {
   try {
-    const { login, password, server, platform, mentorId } = await request.json()
+    const { login, password, server, platform, mentorId, email, userId } = await request.json()
 
     // Validate required fields
     if (!login || !password || !server || !platform) {
@@ -55,7 +55,9 @@ export async function POST(request: NextRequest) {
           if (!existingDbAccount) {
             // Store the account reference in our database
             await metaApiAccountsCollection.insertOne({
+              userId: userId || null,
               mentorId: mentorId || null,
+              email: email || null,
               login,
               server,
               platform,
@@ -65,11 +67,13 @@ export async function POST(request: NextRequest) {
               isExisting: true,
             })
           } else {
-            // Update the last accessed time
-            await metaApiAccountsCollection.updateOne(
-              { accountId: existingAccount.id },
-              { $set: { lastAccessed: new Date() } },
-            )
+            // Update the last accessed time and user info if provided
+            const updateData: any = { lastAccessed: new Date() }
+            if (userId) updateData.userId = userId
+            if (mentorId) updateData.mentorId = mentorId
+            if (email) updateData.email = email
+
+            await metaApiAccountsCollection.updateOne({ accountId: existingAccount.id }, { $set: updateData })
           }
         } catch (dbError) {
           console.error("MongoDB storage failed:", dbError)
@@ -84,6 +88,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Create new account connection - use PROVISIONING API
+      const accountName = `${platform.toUpperCase()} Account (${login}) - ${mentorId || "Unknown"}`
       const newAccount = await axios.post(
         ENDPOINTS.PROVISIONING.ACCOUNTS,
         {
@@ -91,7 +96,7 @@ export async function POST(request: NextRequest) {
           password,
           server,
           platform,
-          name: `${platform.toUpperCase()} Account (${login})`,
+          name: accountName,
           application: "QUICKTRADE PRO",
           magic: 0,
         },
@@ -106,7 +111,9 @@ export async function POST(request: NextRequest) {
         const client = await clientPromise
         const db = client.db("Cluster0")
         await db.collection("metaApiAccounts").insertOne({
+          userId: userId || null,
           mentorId: mentorId || null,
+          email: email || null,
           login,
           server,
           platform,
@@ -141,4 +148,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: error.message || "Internal server error" }, { status: 500 })
   }
 }
-
