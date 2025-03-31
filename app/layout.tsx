@@ -2,7 +2,8 @@ import type React from "react"
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
-import { ThemeProvider } from "@/components/theme-provider"
+import "./native-app.css"
+import AppLayout from "./app-layout"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -17,15 +18,7 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
-  return (
-    <html lang="en">
-      <body className={inter.className}>
-        <ThemeProvider attribute="class" defaultTheme="dark">
-          <main className="min-h-screen bg-background">{children}</main>
-        </ThemeProvider>
-      </body>
-    </html>
-  )
+  return <AppLayout>{children}</AppLayout>
 }
 
 import "./globals.css"

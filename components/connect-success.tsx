@@ -51,17 +51,23 @@ export default function ConnectSuccess({ login, server, platform, accountId }: C
       <Card className="mx-auto max-w-md">
         <CardHeader className="pb-2">
           <div className="bg-green-100 text-green-700 p-2 rounded-md mb-2">
-            <p className="text-sm">Success</p>
+            <p className="text-sm">
+              Success <i className="fa fa-check-circle"></i>
+            </p>
             <p className="text-xs">MetaTrader account connected successfully!</p>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="flex flex-col items-center justify-center py-6">
-            <div className="h-16 w-16 rounded-full bg-green-100 flex items-center justify-center mb-4">
-              <div className="h-8 w-8 rounded-full bg-green-500"></div>
+            <div className="h-16 w-16 rounded-full bg-red-100 flex items-center justify-center mb-4">
+              <div className="h-8 w-8 rounded-full bg-red-500 flex items-center justify-center text-white">
+                <i className="fa fa-check"></i>
+              </div>
             </div>
             <h2 className="text-xl font-bold">MetaTrader Account Connected!</h2>
-            <p className="text-muted-foreground">Welcome aboard, Respect client!</p>
+            <p className="text-muted-foreground">
+              Welcome Client! <i className="fa fa-check"></i>
+            </p>
           </div>
 
           <div className="bg-gray-100 dark:bg-slate-800 p-4 rounded-md space-y-2">
@@ -83,6 +89,14 @@ export default function ConnectSuccess({ login, server, platform, accountId }: C
               </div>
               <span className="text-sm">Platform: {platform}</span>
             </div>
+            {accountId && (
+              <div className="flex items-center">
+                <div className="w-8 flex justify-center">
+                  <span className="text-blue-500">🆔</span>
+                </div>
+                <span className="text-sm">Client ID: {accountId}</span>
+              </div>
+            )}
           </div>
 
           {error && (

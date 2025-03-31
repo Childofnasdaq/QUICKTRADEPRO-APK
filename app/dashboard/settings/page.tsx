@@ -21,6 +21,44 @@ export default function SettingsPage() {
   const [showExpiryWarning, setShowExpiryWarning] = useState(false)
   const [isConnected, setIsConnected] = useState(false)
 
+  // Add a function to fetch detailed license information
+  const fetchLicenseInfo = async () => {
+    if (!userData?.uid) return
+
+    try {
+      const response = await fetch("/api/license-info", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ userId: userData.uid }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch license information")
+      }
+
+      const data = await response.json()
+
+      if (data.success && data.licenseInfo) {
+        // Update userData with more detailed license information
+        setUserData((prev) => ({
+          ...prev,
+          licenseDuration: data.licenseInfo.licenseDuration,
+          daysUntilExpiry: data.licenseInfo.daysUntilExpiry,
+          licenseExpiry: data.licenseInfo.expiryDate,
+          licenseStatus: data.licenseInfo.status,
+          licensePlan: data.licenseInfo.plan,
+        }))
+
+        // Update license expired state
+        setLicenseExpired(data.licenseInfo.isExpired)
+      }
+    } catch (error) {
+      console.error("Error fetching license info:", error)
+    }
+  }
+
   useEffect(() => {
     // Get user data from localStorage
     const storedUserData = localStorage.getItem("userData")
@@ -39,6 +77,9 @@ export default function SettingsPage() {
           setShowExpiryWarning(parsedData.daysUntilExpiry <= 2 && parsedData.daysUntilExpiry > 0)
         }
       }
+
+      // Fetch detailed license information
+      fetchLicenseInfo()
     }
 
     // Load saved symbols if available
@@ -148,168 +189,193 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="p-4 pb-20">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center">
-          <Image
-            src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/304fc277-f835-46c7-ba23-d07c855074f2_20250303_233002_0000-47xeYJouFgkAhOYeLZmL50aOqv5JfW.png"
-            alt="QUICKTRADE PRO Logo"
-            width={30}
-            height={30}
-            className="mr-2"
-            priority
-          />
-          <h1 className="text-xl font-bold">Trading Settings</h1>
+    <div className="flex flex-col min-h-screen pb-20">
+      <div className="flex-1 p-4 overflow-auto">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center">
+            <Image
+              src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/304fc277-f835-46c7-ba23-d07c855074f2_20250303_233002_0000-47xeYJouFgkAhOYeLZmL50aOqv5JfW.png"
+              alt="QUICKTRADE PRO Logo"
+              width={30}
+              height={30}
+              className="mr-2"
+              priority
+            />
+            <h1 className="text-xl font-bold">Trading Settings</h1>
+          </div>
+          <Button variant="ghost" size="icon" onClick={handleRefresh}>
+            <RefreshCw className="h-4 w-4" />
+          </Button>
         </div>
-        <Button variant="ghost" size="icon" onClick={handleRefresh}>
-          <RefreshCw className="h-4 w-4" />
-        </Button>
+
+        {showExpiryWarning && (
+          <Alert variant="warning" className="mb-4 bg-yellow-100 dark:bg-yellow-900 border-yellow-400">
+            <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+            <AlertDescription className="text-yellow-800 dark:text-yellow-300">
+              Your license will expire in {userData?.daysUntilExpiry} day{userData?.daysUntilExpiry !== 1 ? "s" : ""}.
+              Please contact your mentor to renew.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <div className="space-y-4">
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center">
+                <User className="h-5 w-5 text-muted-foreground mr-2" />
+                <h2 className="font-medium">Connection Status</h2>
+              </div>
+              <div className="mt-2 flex items-center">
+                <div className={`h-5 w-5 rounded-full ${isConnected ? "bg-green-500" : "bg-red-500"} mr-2`}></div>
+                <span className={isConnected ? "text-green-500" : "text-red-500"}>
+                  {isConnected ? "active" : "not connected"}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center">
+                <Shield className="h-5 w-5 text-muted-foreground mr-2" />
+                <h2 className="font-medium">License Status</h2>
+              </div>
+              <div className="mt-2">
+                <div className="flex items-center">
+                  <div className={`h-5 w-5 rounded-full ${licenseExpired ? "bg-red-500" : "bg-green-500"} mr-2`}></div>
+                  <span className={licenseExpired ? "text-red-500" : "text-green-500"}>
+                    {licenseExpired ? "expired" : "active"}
+                  </span>
+                </div>
+                <div className="flex items-center mt-1 ml-7">
+                  <span className="text-xs text-muted-foreground">Plan: {userData?.licensePlan || "3days"}</span>
+                </div>
+
+                {userData?.licensePlan === "lifetime" ? (
+                  <div className="flex items-center mt-1 ml-7">
+                    <span className="text-xs text-muted-foreground">Expires: Never (Lifetime)</span>
+                  </div>
+                ) : userData?.licenseExpiry && userData.licenseExpiry !== "NEVER" ? (
+                  <>
+                    <div className="flex items-center mt-1 ml-7">
+                      <span className="text-xs text-muted-foreground">
+                        {licenseExpired
+                          ? `Expired on: ${new Date(userData.licenseExpiry).toLocaleDateString()}`
+                          : `Expires: ${new Date(userData.licenseExpiry).toLocaleDateString()}`}
+                      </span>
+                    </div>
+                    {userData.daysUntilExpiry !== undefined && (
+                      <div className="flex items-center mt-1 ml-7">
+                        <span
+                          className={`text-xs ${licenseExpired ? "text-red-500" : userData.daysUntilExpiry <= 3 ? "text-yellow-500" : "text-muted-foreground"}`}
+                        >
+                          {licenseExpired
+                            ? `Expired ${Math.abs(userData.daysUntilExpiry)} day${Math.abs(userData.daysUntilExpiry) !== 1 ? "s" : ""} ago`
+                            : `${userData.daysUntilExpiry} day${userData.daysUntilExpiry !== 1 ? "s" : ""} remaining`}
+                        </span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="flex items-center mt-1 ml-7">
+                    <span className="text-xs text-muted-foreground">Expires: Not specified</span>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center">
+                <List className="h-5 w-5 text-muted-foreground mr-2" />
+                <h2 className="font-medium">Allowed Trading Symbols</h2>
+              </div>
+
+              <div className="mt-3 flex items-center">
+                <Input
+                  placeholder="Enter symbol (e.g. EURUSDm)"
+                  value={newSymbol}
+                  onChange={(e) => setNewSymbol(e.target.value)}
+                  className="flex-1"
+                />
+                <Button size="icon" className="ml-2 bg-blue-500 hover:bg-blue-600" onClick={handleAddSymbol}>
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+
+              <div className="mt-3 space-y-2">
+                {symbols.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {symbols.map((symbol, index) => (
+                      <div key={index} className="bg-blue-500 text-white rounded-md px-3 py-1 inline-flex items-center">
+                        {symbol}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5 ml-1 p-0 text-white hover:bg-blue-600"
+                          onClick={() => handleRemoveSymbol(symbol)}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No symbols added yet. Add symbols to start trading.</p>
+                )}
+
+                {symbols.length > 0 && (
+                  <div className="mt-2">
+                    <div className="grid grid-cols-2 gap-4 mt-2">
+                      <div>
+                        <p className="text-xs mb-1">Lot Size</p>
+                        <Input value={lotSize} onChange={(e) => setLotSize(e.target.value)} />
+                        <p className="text-xs mt-1">Min Lot Size: 0.01</p>
+                      </div>
+                      <div>
+                        <p className="text-xs mb-1">Max Trades</p>
+                        <Input value={maxTrades} onChange={(e) => setMaxTrades(e.target.value)} />
+                        <p className="text-xs mt-1">0 for unlimited trades</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center">
+                <Box className="h-5 w-5 text-muted-foreground mr-2" />
+                <h2 className="font-medium">Available Symbols</h2>
+              </div>
+              <div className="mt-2 space-y-2">
+                {/* Show symbols that the user has added with their chosen lot size */}
+                {symbols.length > 0 ? (
+                  symbols.map((symbol, index) => (
+                    <div key={index} className="bg-gray-100 dark:bg-slate-800 p-2 rounded-md">
+                      <div className="flex justify-between items-center">
+                        <span>{symbol}</span>
+                        <span className="text-xs text-muted-foreground">Lot Size: {lotSize}</span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No symbols added yet. Add symbols above to see them here.
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
-      {showExpiryWarning && (
-        <Alert variant="warning" className="mb-4 bg-yellow-100 dark:bg-yellow-900 border-yellow-400">
-          <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
-          <AlertDescription className="text-yellow-800 dark:text-yellow-300">
-            Your license will expire in {userData?.daysUntilExpiry} day{userData?.daysUntilExpiry !== 1 ? "s" : ""}.
-            Please contact your mentor to renew.
-          </AlertDescription>
-        </Alert>
-      )}
-
-      <div className="space-y-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center">
-              <User className="h-5 w-5 text-muted-foreground mr-2" />
-              <h2 className="font-medium">Connection Status</h2>
-            </div>
-            <div className="mt-2 flex items-center">
-              <div className={`h-5 w-5 rounded-full ${isConnected ? "bg-green-500" : "bg-red-500"} mr-2`}></div>
-              <span className={isConnected ? "text-green-500" : "text-red-500"}>
-                {isConnected ? "active" : "not connected"}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center">
-              <Shield className="h-5 w-5 text-muted-foreground mr-2" />
-              <h2 className="font-medium">License Status</h2>
-            </div>
-            <div className="mt-2">
-              <div className="flex items-center">
-                <div className={`h-5 w-5 rounded-full ${licenseExpired ? "bg-red-500" : "bg-green-500"} mr-2`}></div>
-                <span className={licenseExpired ? "text-red-500" : "text-green-500"}>
-                  {licenseExpired ? "expired" : "active"}
-                </span>
-              </div>
-              <div className="flex items-center mt-1 ml-7">
-                <span className="text-xs text-muted-foreground">
-                  Plan: {formatLicensePlan(userData?.licensePlan || "standard")}
-                </span>
-              </div>
-              <div className="flex items-center mt-1 ml-7">
-                <span className="text-xs text-muted-foreground">
-                  {userData?.licensePlan === "lifetime"
-                    ? "Expires: Never (Lifetime)"
-                    : userData?.licenseExpiry && userData.licenseExpiry !== "NEVER"
-                      ? `Expires: ${new Date(userData.licenseExpiry).toLocaleDateString()}`
-                      : "Expires: Not specified"}
-                </span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center">
-              <List className="h-5 w-5 text-muted-foreground mr-2" />
-              <h2 className="font-medium">Allowed Trading Symbols</h2>
-            </div>
-
-            <div className="mt-3 flex items-center">
-              <Input
-                placeholder="Enter symbol (e.g. EURUSDm)"
-                value={newSymbol}
-                onChange={(e) => setNewSymbol(e.target.value)}
-                className="flex-1"
-              />
-              <Button size="icon" className="ml-2 bg-blue-500 hover:bg-blue-600" onClick={handleAddSymbol}>
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
-
-            <div className="mt-3 space-y-2">
-              {symbols.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {symbols.map((symbol, index) => (
-                    <div key={index} className="bg-blue-500 text-white rounded-md px-3 py-1 inline-flex items-center">
-                      {symbol}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-5 w-5 ml-1 p-0 text-white hover:bg-blue-600"
-                        onClick={() => handleRemoveSymbol(symbol)}
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">No symbols added yet. Add symbols to start trading.</p>
-              )}
-
-              {symbols.length > 0 && (
-                <div className="mt-2">
-                  <div className="grid grid-cols-2 gap-4 mt-2">
-                    <div>
-                      <p className="text-xs mb-1">Lot Size</p>
-                      <Input value={lotSize} onChange={(e) => setLotSize(e.target.value)} />
-                      <p className="text-xs mt-1">Min Lot Size: 0.01</p>
-                    </div>
-                    <div>
-                      <p className="text-xs mb-1">Max Trades</p>
-                      <Input value={maxTrades} onChange={(e) => setMaxTrades(e.target.value)} />
-                      <p className="text-xs mt-1">0 for unlimited trades</p>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center">
-              <Box className="h-5 w-5 text-muted-foreground mr-2" />
-              <h2 className="font-medium">Available Symbols</h2>
-            </div>
-            <div className="mt-2 space-y-2">
-              {/* Show symbols that the user has added with their chosen lot size */}
-              {symbols.length > 0 ? (
-                symbols.map((symbol, index) => (
-                  <div key={index} className="bg-gray-100 dark:bg-slate-800 p-2 rounded-md">
-                    <div className="flex justify-between items-center">
-                      <span>{symbol}</span>
-                      <span className="text-xs text-muted-foreground">Lot Size: {lotSize}</span>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  No symbols added yet. Add symbols above to see them here.
-                </p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Button className="w-full bg-blue-500 hover:bg-blue-600" onClick={handleSaveSettings} disabled={isSaving}>
+      {/* Fixed Save Settings button at the bottom, above the navigation bar */}
+      <div className="fixed bottom-16 left-0 right-0 px-4 pb-2 bg-background">
+        <Button className="w-full py-6 bg-blue-500 hover:bg-blue-600" onClick={handleSaveSettings} disabled={isSaving}>
           {isSaving ? "Saving..." : "Save Settings"}
         </Button>
       </div>

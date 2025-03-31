@@ -11,6 +11,8 @@ export interface UserData {
   deviceId?: string
   licensePlan?: string
   daysUntilExpiry?: number
+  licenseDuration?: number
+  metaApiAccountId?: string
 }
 
 export const authenticateUser = async (
@@ -43,6 +45,25 @@ export const authenticateUser = async (
 
 export const logoutUser = async () => {
   try {
+    // Get user data to deactivate license key
+    const userData = localStorage.getItem("userData")
+    if (userData) {
+      const parsedUserData = JSON.parse(userData)
+      if (parsedUserData.licenseKey) {
+        // Deactivate the license key
+        await fetch("/api/deactivate-license", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            licenseKey: parsedUserData.licenseKey,
+            deviceId: parsedUserData.deviceId,
+          }),
+        })
+      }
+    }
+
     // Clear all localStorage items
     localStorage.removeItem("userData")
     localStorage.removeItem("isAuthenticated")
@@ -73,6 +94,36 @@ export const getUserData = async (uid: string): Promise<UserData | null> => {
   } catch (error) {
     console.error("Error fetching user data:", error)
     return null
+  }
+}
+
+export const checkSession = async (): Promise<boolean> => {
+  try {
+    // Check if we have userData and deviceId in localStorage
+    const userData = localStorage.getItem("userData")
+    const deviceId = localStorage.getItem("deviceId")
+
+    if (!userData || !deviceId) {
+      return false
+    }
+
+    // Validate session with the server
+    const response = await fetch("/api/check-session", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        userId: JSON.parse(userData).uid,
+        deviceId,
+      }),
+    })
+
+    const data = await response.json()
+    return data.valid === true
+  } catch (error) {
+    console.error("Session check error:", error)
+    return false
   }
 }
 

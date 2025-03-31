@@ -60,20 +60,9 @@ export async function POST(request: NextRequest) {
         }
 
         // Check if license key is deactivated
-        if (licenseKeyDoc.isDeactivated === true || licenseKeyDoc.status === "used") {
+        if (licenseKeyDoc.isDeactivated === true) {
           return NextResponse.json(
-            { error: "This license key has expired or has been used. Please contact support for a new license key." },
-            { status: 401 },
-          )
-        }
-
-        // Check if license key is already activated on another device
-        if (licenseKeyDoc.isActivated && licenseKeyDoc.deviceId && licenseKeyDoc.deviceId !== currentDeviceId) {
-          return NextResponse.json(
-            {
-              error:
-                "This license key has been used on another device. Please contact your mentor for a new license key.",
-            },
+            { error: "This license key has been deactivated. Please contact support for a new license key." },
             { status: 401 },
           )
         }
@@ -89,6 +78,22 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        // STRICT DEVICE CHECK: If the license key is already activated on another device, reject the login
+        if (licenseKeyDoc.isActivated && licenseKeyDoc.deviceId && licenseKeyDoc.deviceId !== currentDeviceId) {
+          // Log the attempt for security monitoring
+          console.warn(
+            `Attempted use of license key ${licenseKey} on new device ${currentDeviceId} while already active on device ${licenseKeyDoc.deviceId}`,
+          )
+
+          return NextResponse.json(
+            {
+              error:
+                "This license key is already in use on another device. Each license key can only be used on one device at a time.",
+            },
+            { status: 401 },
+          )
+        }
+
         // Activate license key on this device if not already activated
         if (!licenseKeyDoc.isActivated || !licenseKeyDoc.deviceId) {
           await licenseKeysCollection.updateOne(
@@ -98,11 +103,51 @@ export async function POST(request: NextRequest) {
                 isActivated: true,
                 deviceId: currentDeviceId,
                 activationDate: new Date(),
-                status: "used", // Mark as used immediately
+                status: "active", // Mark as active (not "used" yet)
+                userId: user._id.toString(),
+                userEmail: email,
+                lastLoginAt: new Date(),
+              },
+            },
+          )
+        } else if (licenseKeyDoc.deviceId === currentDeviceId) {
+          // Update last login time for this device
+          await licenseKeysCollection.updateOne(
+            { key: licenseKey },
+            {
+              $set: {
+                lastLoginAt: new Date(),
               },
             },
           )
         }
+
+        // Create or update user sessions collection to track active sessions
+        if (!collectionNames.includes("userSessions")) {
+          await db.createCollection("userSessions")
+        }
+
+        const userSessionsCollection = db.collection("userSessions")
+
+        // Create or update session
+        await userSessionsCollection.updateOne(
+          {
+            userId: user._id.toString(),
+            deviceId: currentDeviceId,
+          },
+          {
+            $set: {
+              userId: user._id.toString(),
+              email: email,
+              mentorId: mentorIdValue,
+              licenseKey: licenseKey,
+              deviceId: currentDeviceId,
+              lastActiveAt: new Date(),
+              isActive: true,
+            },
+          },
+          { upsert: true },
+        )
       }
 
       // Get EA information if available
@@ -121,6 +166,13 @@ export async function POST(request: NextRequest) {
         const today = new Date()
         const diffTime = expiryDate.getTime() - today.getTime()
         daysUntilExpiry = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+        // Check if license has expired but allow login with warning
+        if (daysUntilExpiry < 0 && licenseKeyDoc.plan !== "lifetime") {
+          console.warn(
+            `User logging in with expired license key: ${licenseKey}, expired ${Math.abs(daysUntilExpiry)} days ago`,
+          )
+        }
       }
 
       // Check if user already has a MetaAPI account
@@ -150,8 +202,6 @@ export async function POST(request: NextRequest) {
           })
 
           // Look for an account with this user's information
-          // This is a simplified example - you would need to determine how to match accounts
-          // Perhaps by using a naming convention that includes mentorId or email
           const existingAccount = accountsResponse.data.find(
             (acc) => acc.name && (acc.name.includes(mentorIdValue) || acc.name.includes(email)),
           )
@@ -211,3 +261,4 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+

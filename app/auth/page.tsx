@@ -6,7 +6,7 @@ import Image from "next/image"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { authenticateUser } from "@/lib/auth"
+import { authenticateUser, checkSession } from "@/lib/auth"
 import { toast } from "@/hooks/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { v4 as uuidv4 } from "uuid"
@@ -19,6 +19,8 @@ export default function AuthPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const [deviceId, setDeviceId] = useState("")
+  const [checkingSession, setCheckingSession] = useState(true)
+  const [isCheckingLicense, setIsCheckingLicense] = useState(false)
 
   useEffect(() => {
     // Get or create device ID
@@ -28,7 +30,75 @@ export default function AuthPage() {
       localStorage.setItem("deviceId", storedDeviceId)
     }
     setDeviceId(storedDeviceId)
-  }, [])
+
+    // Check if user is already authenticated
+    const checkAuthStatus = async () => {
+      // First check localStorage
+      const isAuthenticated = localStorage.getItem("isAuthenticated") === "true"
+
+      if (isAuthenticated) {
+        // Verify session is still valid with the server
+        const sessionValid = await checkSession()
+
+        if (sessionValid) {
+          router.push("/dashboard")
+          return
+        } else {
+          // Session is invalid, clear authentication state
+          localStorage.removeItem("isAuthenticated")
+          localStorage.removeItem("userData")
+        }
+      }
+
+      setCheckingSession(false)
+    }
+
+    checkAuthStatus()
+  }, [router])
+
+  // Function to check if license key is already in use
+  const checkLicenseKey = async (licenseKey: string) => {
+    try {
+      setIsCheckingLicense(true)
+
+      const response = await fetch("/api/check-license", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ licenseKey }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to check license key")
+      }
+
+      if (data.found) {
+        // If license is already activated on another device, show error
+        if (data.isActivated && data.deviceId && data.deviceId !== deviceId) {
+          setError(
+            "This license key is already in use on another device. Each license key can only be used on one device at a time.",
+          )
+          return false
+        }
+
+        // If license is deactivated, show error
+        if (data.isDeactivated) {
+          setError("This license key has been deactivated. Please contact support for a new license key.")
+          return false
+        }
+      }
+
+      return true
+    } catch (error) {
+      console.error("License check error:", error)
+      return true // Continue with authentication if license check fails
+    } finally {
+      setIsCheckingLicense(false)
+    }
+  }
 
   const handleAuthenticate = async () => {
     if (!mentorId || !email || !licenseKey) {
@@ -38,6 +108,13 @@ export default function AuthPage() {
 
     setIsLoading(true)
     setError("")
+
+    // First check if license key is already in use
+    const licenseValid = await checkLicenseKey(licenseKey)
+    if (!licenseValid) {
+      setIsLoading(false)
+      return
+    }
 
     try {
       // Attempt authentication
@@ -59,6 +136,14 @@ export default function AuthPage() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  if (checkingSession) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+      </div>
+    )
   }
 
   return (
@@ -95,9 +180,16 @@ export default function AuthPage() {
               <Button
                 className="w-full bg-blue-500 hover:bg-blue-600"
                 onClick={handleAuthenticate}
-                disabled={isLoading}
+                disabled={isLoading || isCheckingLicense}
               >
-                {isLoading ? "Authenticating..." : "Authenticate"}
+                {isLoading || isCheckingLicense ? (
+                  <>
+                    <div className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                    {isCheckingLicense ? "Checking License..." : "Authenticating..."}
+                  </>
+                ) : (
+                  "Authenticate"
+                )}
               </Button>
             </div>
           </div>

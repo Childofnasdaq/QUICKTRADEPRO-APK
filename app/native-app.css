@@ -1,0 +1,69 @@
+/* Styles to make the app feel more native */
+
+/* Prevent text selection/highlighting */
+* {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Allow text selection in specific elements like inputs */
+input,
+textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Prevent pull-to-refresh and overscroll behaviors */
+html,
+body {
+  overscroll-behavior: none;
+  overflow: hidden;
+  position: fixed;
+  width: 100%;
+  height: 100%;
+  touch-action: manipulation;
+}
+
+/* Make content scrollable within the fixed body */
+main {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  height: 100%;
+  width: 100%;
+}
+
+/* Remove focus outlines for app-like feel */
+button:focus,
+a:focus,
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+}
+
+/* Add momentum-based scrolling for iOS */
+.scrollable {
+  -webkit-overflow-scrolling: touch;
+  overflow-y: auto;
+}
+
+/* Disable long-press context menu on elements */
+.no-context {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* Make buttons feel more responsive with active state */
+button,
+.button {
+  transition: transform 0.1s ease;
+}
+
+button:active,
+.button:active {
+  transform: scale(0.97);
+}
+

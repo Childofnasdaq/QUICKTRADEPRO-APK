@@ -1,0 +1,44 @@
+/* Aggressive prevention of zooming and text selection */
+* {
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  touch-action: manipulation !important;
+}
+
+/* Only allow text selection in inputs */
+input,
+textarea {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  touch-action: auto !important;
+}
+
+/* Prevent all zoom behaviors */
+html,
+body {
+  touch-action: pan-x pan-y !important;
+  overscroll-behavior: none !important;
+  overflow: hidden !important;
+  position: fixed !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Make content scrollable within fixed body */
+main {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  height: 100% !important;
+  width: 100% !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+}
+
+/* Disable context menu */
+body {
+  -webkit-context-menu: none !important;
+}
+

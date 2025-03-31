@@ -3,7 +3,7 @@ import clientPromise from "@/lib/mongodb"
 
 export async function POST(request: NextRequest) {
   try {
-    const { licenseKey } = await request.json()
+    const { licenseKey, deviceId } = await request.json()
 
     if (!licenseKey) {
       return NextResponse.json({ error: "License key is required" }, { status: 400 })
@@ -32,8 +32,24 @@ export async function POST(request: NextRequest) {
       const licenseKeysCollection = db.collection("licenseKeys")
       const result = await licenseKeysCollection.updateOne(
         { key: licenseKey },
-        { $set: { status: "used", isDeactivated: true } },
+        {
+          $set: {
+            status: "used",
+            isDeactivated: true,
+            deactivatedAt: new Date(),
+            lastDeviceId: deviceId || null,
+          },
+        },
       )
+
+      // Also update user sessions if that collection exists
+      if (collectionNames.includes("userSessions") && deviceId) {
+        const userSessionsCollection = db.collection("userSessions")
+        await userSessionsCollection.updateOne(
+          { licenseKey: licenseKey, deviceId: deviceId },
+          { $set: { isActive: false, loggedOutAt: new Date() } },
+        )
+      }
 
       if (result.matchedCount > 0) {
         return NextResponse.json({
